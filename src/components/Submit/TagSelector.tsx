@@ -147,7 +147,7 @@ export default function TagSelector({ value, onChange }: TagSelectorProps) {
       </div>
 
       {/* Persistent selector */}
-      <div className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-2)]/80 backdrop-blur-xl shadow-xl">
+      <div className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-2)]/80">
         {/* Search input */}
         <div className="border-b border-[var(--border)] p-2">
           <input
@@ -167,7 +167,7 @@ export default function TagSelector({ value, onChange }: TagSelectorProps) {
           />
         </div>
 
-        <div className="flex h-80 divide-x divide-[var(--border)]">
+        <div className="flex h-74 divide-x divide-[var(--border)]">
           {/* Categories */}
           <div
             ref={categoriesContainerRef}
