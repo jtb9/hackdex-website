@@ -91,7 +91,7 @@ export async function prepareSubmission(formData: FormData) {
       .in("name", tags);
     if (tagErr) return { ok: false, error: tagErr.message } as const;
     if (existingTags && existingTags.length > 0) {
-      const hackTags = existingTags.map((t) => ({ hack_slug: slug, tag_id: t.id }));
+      const hackTags = existingTags.map((t, i) => ({ hack_slug: slug, tag_id: t.id, order: i + 1 }));
       const { error: htErr } = await supabase.from("hack_tags").insert(hackTags);
       if (htErr) return { ok: false, error: htErr.message } as const;
     }

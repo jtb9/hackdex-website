@@ -11,6 +11,7 @@ import { MdTune } from "react-icons/md";
 import { BsSdCardFill } from "react-icons/bs";
 import { CATEGORY_ICONS } from "@/components/Icons/tagCategories";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
+import { sortOrderedTags, OrderedTag } from "@/utils/format";
 
 
 export default function DiscoverBrowser() {
@@ -88,13 +89,15 @@ export default function DiscoverBrowser() {
       }
       const { data: tagRows } = await supabase
         .from("hack_tags")
-        .select("hack_slug,tags(name,category)")
+        .select("hack_slug,order,tags(name,category)")
         .in("hack_slug", slugs);
-      const tagsBySlug = new Map<string, string[]>();
-      (tagRows || []).forEach((r: any) => {
-        if (!r.tags?.name) return;
+      const tagsBySlug = new Map<string, OrderedTag[]>();
+      (tagRows || []).forEach((r) => {
         const arr = tagsBySlug.get(r.hack_slug) || [];
-        arr.push(r.tags.name);
+        arr.push({
+          name: r.tags.name,
+          order: r.order,
+        });
         tagsBySlug.set(r.hack_slug, arr);
       });
 
@@ -126,7 +129,7 @@ export default function DiscoverBrowser() {
         title: r.title,
         author: usernameById.get(r.created_by as string) || "Unknown",
         covers: coversBySlug.get(r.slug) || [],
-        tags: tagsBySlug.get(r.slug) || [],
+        tags: sortOrderedTags(tagsBySlug.get(r.slug) || []),
         downloads: r.downloads,
         baseRomId: r.base_rom,
         version: mappedVersions.get(r.slug) || "Pre-release",

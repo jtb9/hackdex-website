@@ -4,6 +4,7 @@ import { FaArrowRightLong } from "react-icons/fa6";
 import { createClient } from "@/utils/supabase/server";
 import HackCard from "@/components/HackCard";
 import Button from "@/components/Button";
+import { sortOrderedTags } from "@/utils/format";
 
 export const metadata: Metadata = {
   alternates: {
@@ -61,13 +62,16 @@ export default async function Home() {
     // Fetch tags
     const { data: tagRows } = await supabase
       .from("hack_tags")
-      .select("hack_slug,tags(name,category)")
+      .select("hack_slug,order,tags(name,category)")
       .in("hack_slug", slugs);
-    const tagsBySlug = new Map<string, string[]>();
+    const tagsBySlug = new Map<string, { name: string; order: number }[]>();
     (tagRows || []).forEach((r: any) => {
       if (!r.tags?.name) return;
       const arr = tagsBySlug.get(r.hack_slug) || [];
-      arr.push(r.tags.name);
+      arr.push({
+        name: r.tags.name,
+        order: r.order,
+      });
       tagsBySlug.set(r.hack_slug, arr);
     });
 
@@ -103,7 +107,7 @@ export default async function Home() {
       title: r.title,
       author: usernameById.get(r.created_by as string) || "Unknown",
       covers: coversBySlug.get(r.slug) || [],
-      tags: tagsBySlug.get(r.slug) || [],
+      tags: sortOrderedTags(tagsBySlug.get(r.slug) || []),
       downloads: r.downloads,
       baseRomId: r.base_rom,
       version: mappedVersions.get(r.slug) || "Pre-release",
