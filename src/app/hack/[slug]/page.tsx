@@ -17,6 +17,7 @@ import serialize from "serialize-javascript";
 import { headers } from "next/headers";
 import { MenuItem } from "@headlessui/react";
 import { FaCircleCheck } from "react-icons/fa6";
+import { sortOrderedTags } from "@/utils/format";
 
 interface HackDetailProps {
   params: Promise<{ slug: string }>;
@@ -133,9 +134,16 @@ export default async function HackDetail({ params }: HackDetailProps) {
 
   const { data: tagRows } = await supabase
     .from("hack_tags")
-    .select("tags(name)")
+    .select("order,tags(name)")
     .eq("hack_slug", slug);
-  const tags = (tagRows || []).map((r: any) => r.tags?.name).filter(Boolean) as string[];
+
+  const tags = sortOrderedTags(
+    (tagRows || [])
+      .map((r) => ({
+        name: r.tags.name,
+        order: r.order,
+      }))
+  ).map((t) => t.name);
 
   const { data: profile } = await supabase
     .from("profiles")

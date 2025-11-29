@@ -54,14 +54,19 @@ export async function updateHack(args: {
   }
 
   if (args.tags) {
-    // Resolve desired tag IDs from names and compute diff against current links
+    // Resolve desired tag IDs from names and upsert links with explicit ordering
     const { data: existingTags, error: tagErr } = await supabase
       .from("tags")
       .select("id, name")
       .in("name", args.tags);
     if (tagErr) return { ok: false, error: tagErr.message } as const;
 
-    const desiredIds = Array.from(new Set((existingTags || []).map((t) => t.id)));
+    const byName = new Map((existingTags || []).map((t: any) => [t.name as string, t.id as number]));
+
+    // Desired IDs in the exact order provided by the caller
+    const desiredIds = args.tags
+      .map((name) => byName.get(name))
+      .filter((id): id is number => typeof id === "number");
 
     const { data: currentLinks, error: curErr } = await supabase
       .from("hack_tags")
@@ -72,9 +77,8 @@ export async function updateHack(args: {
     const currentIds = new Set((currentLinks || []).map((r: any) => r.tag_id as number));
     const desiredSet = new Set(desiredIds);
 
-    const toAdd = desiredIds.filter((id) => !currentIds.has(id));
+    // Remove links for tags that are no longer present
     const toRemove = Array.from(currentIds).filter((id) => !desiredSet.has(id));
-
     if (toRemove.length > 0) {
       const { error: delErr } = await supabase
         .from("hack_tags")
@@ -84,10 +88,18 @@ export async function updateHack(args: {
       if (delErr) return { ok: false, error: delErr.message } as const;
     }
 
-    if (toAdd.length > 0) {
-      const rows = toAdd.map((id) => ({ hack_slug: args.slug, tag_id: id }));
-      const { error: insErr } = await supabase.from("hack_tags").insert(rows);
-      if (insErr) return { ok: false, error: insErr.message } as const;
+    // Upsert links for all desired tags with the correct order
+    if (desiredIds.length > 0) {
+      const rows: TablesInsert<"hack_tags">[] = desiredIds.map((id, index) => ({
+        hack_slug: args.slug,
+        tag_id: id,
+        order: index + 1,
+      }));
+
+      const { error: upErr } = await supabase
+        .from("hack_tags")
+        .upsert(rows, { onConflict: "hack_slug,tag_id" });
+      if (upErr) return { ok: false, error: upErr.message } as const;
     }
   }
 

@@ -20,7 +20,7 @@ import BinFile from "rom-patcher-js/rom-patcher-js/modules/BinFile.js";
 import BPS from "rom-patcher-js/rom-patcher-js/modules/RomPatcher.format.bps.js";
 import { sha1Hex } from "@/utils/hash";
 import { platformAccept, setDraftCovers, getDraftCovers, deleteDraftCovers } from "@/utils/idb";
-import { slugify } from "@/utils/format";
+import { slugify, sortOrderedTags } from "@/utils/format";
 
 function SortableCoverItem({ id, index, url, filename, onRemove }: { id: string; index: number; url: string; filename: string; onRemove: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -498,7 +498,7 @@ export default function HackSubmitForm({ dummy = false }: HackSubmitFormProps) {
     baseRomId: baseRom,
     downloads: 0,
     version: version || "v0.0.0",
-    tags,
+    tags: sortOrderedTags(tags.map((name, index) => ({ name, order: index + 1 }))),
     ...(boxArt ? { boxArt } : {}),
     socialLinks:
       discord || twitter || pokecommunity

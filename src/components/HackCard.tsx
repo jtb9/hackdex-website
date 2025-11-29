@@ -3,7 +3,7 @@
 
 import PixelImage from "./PixelImage";
 import Link from "next/link";
-import { formatCompactNumber } from "@/utils/format";
+import { formatCompactNumber, OrderedTag } from "@/utils/format";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
 import { baseRoms } from "@/data/baseRoms";
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +17,7 @@ type CardHack = {
   title: string;
   author: string;
   covers: string[];
-  tags: string[];
+  tags: OrderedTag[];
   downloads: number;
   baseRomId?: string;
   version: string;
@@ -123,10 +123,10 @@ export default function HackCard({ hack, clickable = true, className = "" }: { h
           <div className="absolute left-3 top-3 z-10 flex gap-2">
             {hack.tags.slice(0, 2).map((t) => (
               <span
-                key={t}
+                key={t.name}
                 className="rounded-full px-2 py-0.5 text-xs ring-1 ring-foreground/20 dark:ring-foreground/30 bg-background/70 text-foreground/90 backdrop-blur-md"
               >
-                {t}
+                {t.name}
               </span>
             ))}
             <span

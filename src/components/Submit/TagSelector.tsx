@@ -5,6 +5,19 @@ import { createClient } from "@/utils/supabase/client";
 import { MdTune } from "react-icons/md";
 import { CATEGORY_ICONS, getCategoryIcon } from "@/components/Icons/tagCategories";
 import { FaTimes } from "react-icons/fa";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+  DragCancelEvent,
+  DragOverlay,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
+import { RxDragHandleDots2 } from "react-icons/rx";
 
 type TagRow = {
   id: number;
@@ -16,6 +29,89 @@ type TagRow = {
 export interface TagSelectorProps {
   value: string[];
   onChange: (next: string[]) => void;
+}
+
+type CategoryIconType = React.ComponentType<React.SVGProps<SVGSVGElement>> | null;
+
+function SortableSelectedTag({
+  id,
+  index,
+  name,
+  categoryIcon: Icon,
+  onRemove,
+  isPrimary,
+  isGhost,
+  insertSide,
+}: {
+  id: string;
+  index: number;
+  name: string;
+  categoryIcon: CategoryIconType;
+  onRemove: () => void;
+  isPrimary: boolean;
+  isGhost: boolean;
+  insertSide: "left" | "right" | null;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    opacity: isGhost ? 0.5 : undefined,
+  };
+
+  return (
+    <span
+      ref={setNodeRef}
+      style={style}
+      className={[
+        "relative inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] sm:text-xs ring-1",
+        isPrimary
+          ? "bg-[var(--accent-soft,rgba(16,185,129,0.08))] ring-[var(--accent-border,rgba(16,185,129,0.4))]"
+          : "bg-[var(--surface-2)] ring-[var(--border)]",
+        isDragging && !isGhost ? "opacity-80 shadow-lg shadow-black/20 dark:shadow-black/40" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {insertSide === "left" && (
+        <div className="pointer-events-none absolute -left-1 top-1 bottom-1 w-px bg-[var(--accent,#16a34a)]" />
+      )}
+      {insertSide === "right" && (
+        <div className="pointer-events-none absolute -right-1 top-1 bottom-1 w-px bg-[var(--accent,#16a34a)]" />
+      )}
+      <button
+        type="button"
+        className="mr-0.5 inline-flex h-5 w-5 sm:h-4 sm:w-4 items-center justify-center rounded-full text-foreground/40 hover:text-foreground/80 cursor-grab active:cursor-grabbing touch-none"
+        aria-label={`Reorder tag ${name}`}
+        {...attributes}
+        {...listeners}
+      >
+        <RxDragHandleDots2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+      </button>
+      {Icon ? <Icon className="h-3.5 w-3.5 opacity-80" /> : null}
+      <span className="truncate max-w-[9.5rem] sm:max-w-[12rem]">{name}</span>
+      {isPrimary && (
+        <span className="ml-0.5 rounded-full bg-black/5 px-1.5 py-0.5 text-[9px] sm:text-[8px] uppercase tracking-wide text-foreground/60 dark:bg-white/5">
+          {index === 0 ? "First" : "Second"}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        className="ml-1 inline-flex h-5 w-5 sm:h-4 sm:w-4 items-center justify-center rounded-full text-foreground/70 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+        aria-label={`Remove tag ${name}`}
+      >
+        <FaTimes className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+      </button>
+    </span>
+  );
 }
 
 export default function TagSelector({ value, onChange }: TagSelectorProps) {
@@ -31,6 +127,14 @@ export default function TagSelector({ value, onChange }: TagSelectorProps) {
   const tagItemRefs = React.useRef<(HTMLDivElement | null)[]>([]);
   const [activeTagIndex, setActiveTagIndex] = React.useState<number | null>(null);
   const [categoriesPaneFocused, setCategoriesPaneFocused] = React.useState(false);
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [overId, setOverId] = React.useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+  );
 
   const setActiveCategory = React.useCallback((cat: string | "advanced" | null) => {
     _setActiveCategory(cat);
@@ -125,25 +229,123 @@ export default function TagSelector({ value, onChange }: TagSelectorProps) {
     }
   }, [activeTagIndex]);
 
+  const selectedTagIds = React.useMemo(
+    () => value.map((t, i) => `${t}__${i}`),
+    [value],
+  );
+
   function toggleTag(name: string) {
     onChange(value.includes(name) ? value.filter((v) => v !== name) : [...value, name]);
   }
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const id = event.active.id as string;
+    setActiveId(id);
+    setOverId(id);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    if (event.over) {
+      setOverId(event.over.id as string);
+    }
+  };
+
+  const handleSelectedDragEnd = (event: DragEndEvent | DragCancelEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      setActiveId(null);
+      setOverId(null);
+      return;
+    }
+    const oldIndex = selectedTagIds.indexOf(active.id as string);
+    const newIndex = selectedTagIds.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+    const next = arrayMove(value, oldIndex, newIndex);
+    onChange(next);
+    setActiveId(null);
+    setOverId(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setOverId(null);
+  };
+
   return (
     <div className="grid gap-2">
       {/* Selected tag pills */}
-      <div className="flex max-h-24 flex-wrap gap-2 overflow-auto pr-1">
-        {value.length > 0 ? value.map((t) => {
-          const cat = grouped.categories.find((c) => (grouped.byCat.get(c) || []).some((r) => r.name === t)) || (grouped.advanced.some((r) => r.name === t) ? "Advanced" : undefined);
-          const Icon = getCategoryIcon(cat === "Advanced" ? null : cat);
-          return (
-            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-2)] px-2 py-1 text-xs ring-1 ring-[var(--border)]">
-              {Icon ? <Icon className="h-3.5 w-3.5 opacity-80" /> : null}
-              {t}
-              <button type="button" onClick={() => toggleTag(t)} className="ml-1 text-foreground/70 hover:text-foreground hover:cursor-pointer"><FaTimes className="h-3 w-3" /></button>
-            </span>
-          );
-        }) : <div className="px-2 py-0.5 text-sm text-foreground/60">No tags selected</div>}
+      <div className="text-[11px] text-foreground/60">
+        The first two tags appear as badges on your hack card preview.
+      </div>
+      <div className="flex max-h-24 flex-wrap gap-2 overflow-auto p-1">
+        {value.length > 0 ? (
+          <DndContext
+            id="selected-tags"
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleSelectedDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext items={selectedTagIds} strategy={rectSortingStrategy}>
+              {value.map((t, index) => {
+                const cat =
+                  grouped.categories.find((c) => (grouped.byCat.get(c) || []).some((r) => r.name === t)) ||
+                  (grouped.advanced.some((r) => r.name === t) ? "Advanced" : undefined);
+                const Icon = (getCategoryIcon(cat === "Advanced" ? null : cat) ?? null) as CategoryIconType;
+                const id = selectedTagIds[index];
+                const isPrimary = index === 0 || index === 1;
+                const isGhost = activeId === id;
+                const overIndex = overId ? selectedTagIds.indexOf(overId) : -1;
+                const activeIndex = activeId ? selectedTagIds.indexOf(activeId) : -1;
+                let insertSide: "left" | "right" | null = null;
+                if (activeId && overIndex === index && activeIndex !== index && activeIndex !== -1) {
+                  insertSide = overIndex > activeIndex ? "right" : "left";
+                }
+
+                return (
+                  <React.Fragment key={id}>
+                    <SortableSelectedTag
+                      id={id}
+                      index={index}
+                      name={t}
+                      categoryIcon={Icon}
+                      onRemove={() => toggleTag(t)}
+                      isPrimary={isPrimary}
+                      isGhost={isGhost}
+                      insertSide={insertSide}
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </SortableContext>
+            <DragOverlay>
+              {activeId ? (() => {
+                const activeIndex = selectedTagIds.indexOf(activeId);
+                if (activeIndex === -1) return null;
+                const t = value[activeIndex];
+                const cat =
+                  grouped.categories.find((c) => (grouped.byCat.get(c) || []).some((r) => r.name === t)) ||
+                  (grouped.advanced.some((r) => r.name === t) ? "Advanced" : undefined);
+                const Icon = (getCategoryIcon(cat === "Advanced" ? null : cat) ?? null) as CategoryIconType;
+                const isPrimary = activeIndex === 0 || activeIndex === 1;
+                return (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-2)] px-2 py-1 text-xs ring-1 ring-[var(--border)] shadow-lg shadow-black/30 dark:shadow-black/60">
+                    {Icon ? <Icon className="h-3.5 w-3.5 opacity-80" /> : null}
+                    <span className="truncate max-w-[9rem] sm:max-w-[12rem]">{t}</span>
+                    {isPrimary && (
+                      <span className="ml-0.5 rounded-full bg-black/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-foreground/60 dark:bg-white/5">
+                        {activeIndex === 0 ? "First" : "Second"}
+                      </span>
+                    )}
+                  </span>
+                );
+              })() : null}
+            </DragOverlay>
+          </DndContext>
+        ) : (
+          <div className="px-2 py-0.5 text-sm text-foreground/60">No tags selected</div>
+        )}
       </div>
 
       {/* Persistent selector */}
