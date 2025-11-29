@@ -58,7 +58,7 @@ export default function Gallery({ images, title }: { images: string[]; title: st
             }`}
             aria-label={`Show image ${i + 1}`}
           >
-            <img src={src} alt={`${title} screenshot ${i + 1}`} className="absolute inset-0 object-cover" draggable={false} />
+            <img src={src} alt={`${title} screenshot ${i + 1}`} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
           </button>
         ))}
       </div>
