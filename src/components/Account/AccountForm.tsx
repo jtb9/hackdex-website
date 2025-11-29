@@ -63,7 +63,7 @@ export default function AccountForm({ user, profile }: { user: User | null, prof
 
   return (
     <div className="grid gap-8">
-      <div className="flex items-center gap-6">
+      <div className="flex items-center flex-col sm:flex-row gap-6">
         <Avatar
           uid={user?.id ?? null}
           url={avatar_url}
@@ -74,8 +74,8 @@ export default function AccountForm({ user, profile }: { user: User | null, prof
           }}
         />
         <div className="text-sm text-foreground/70">
-          <div className="text-xl font-semibold text-foreground">{fullname || <span className="italic text-foreground/80">No name</span>}</div>
-          <div className="text-sm text-foreground/70">{username ? `@${username}` : <span className="italic text-foreground/60">No username</span>}</div>
+          <div className="text-xl text-center sm:text-left font-semibold text-foreground">{fullname || <span className="italic text-foreground/80">No name</span>}</div>
+          <div className="text-sm text-center sm:text-left text-foreground/70">{username ? `@${username}` : <span className="italic text-foreground/60">No username</span>}</div>
           <div className="mt-3">Update your profile details and avatar.</div>
         </div>
       </div>

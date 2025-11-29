@@ -140,7 +140,7 @@ export default function Avatar({
       {isEditable && (
         <input
           ref={fileInputRef}
-          style={{ visibility: 'hidden', position: 'absolute' }}
+          style={{ visibility: 'hidden', position: 'absolute', width: 0, height: 0, opacity: 0, overflow: 'hidden' }}
           type="file"
           accept="image/*"
           onChange={uploadAvatar}
