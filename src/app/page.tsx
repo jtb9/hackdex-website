@@ -25,6 +25,7 @@ export default async function Home() {
     .from("hacks")
     .select("slug,title,summary,description,base_rom,downloads,created_by,current_patch,original_author")
     .eq("approved", true)
+    .not("current_patch", "is", null)
     .order("downloads", { ascending: false })
     .limit(6);
 
