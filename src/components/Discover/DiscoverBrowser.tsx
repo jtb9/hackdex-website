@@ -124,7 +124,7 @@ export default function DiscoverBrowser() {
       const mapped = (rows || []).map((r) => ({
         slug: r.slug,
         title: r.title,
-        author: usernameById.get(r.created_by as string) || "Unknown",
+        author: r.original_author ? r.original_author : usernameById.get(r.created_by as string) || "Unknown",
         covers: coversBySlug.get(r.slug) || [],
         tags: sortOrderedTags(tagsBySlug.get(r.slug) || []),
         downloads: r.downloads,
