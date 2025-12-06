@@ -61,11 +61,15 @@ function SortableCoverItem({ id, index, url, filename, onRemove }: { id: string;
 interface HackSubmitFormProps {
   dummy?: boolean;
   isArchive?: boolean;
+  permissionFrom?: string;
+  customCreator?: string;
 }
 
 export default function HackSubmitForm({
   dummy = false,
   isArchive = false,
+  permissionFrom = undefined,
+  customCreator = undefined,
 }: HackSubmitFormProps) {
   const MAX_COVERS = 10;
   const { profile, user } = useAuthContext();
@@ -101,7 +105,11 @@ export default function HackSubmitForm({
   const [pokecommunity, setPokecommunity] = React.useState(() => initialDraftRef.current?.pokecommunity || "");
   const [tags, setTags] = React.useState<string[]>(() => (Array.isArray(initialDraftRef.current?.tags) ? initialDraftRef.current.tags : []));
   const [showMdPreview, setShowMdPreview] = React.useState<boolean>(() => !!initialDraftRef.current?.showMdPreview);
-  const [originalAuthor, setOriginalAuthor] = React.useState(() => initialDraftRef.current?.originalAuthor || "");
+  const [originalAuthor, setOriginalAuthor] = React.useState<string>(() => {
+    // If customCreator is provided, use it; otherwise use draft or empty string
+    if (customCreator) return customCreator;
+    return initialDraftRef.current?.originalAuthor || "";
+  });
   const [patchFile, setPatchFile] = React.useState<File | null>(null);
   const [patchMode, setPatchMode] = React.useState<"bps" | "rom">(() => (initialDraftRef.current?.patchMode === "rom" ? "rom" : "bps"));
   const [genStatus, setGenStatus] = React.useState<"idle" | "generating" | "ready" | "error">("idle");
@@ -161,6 +169,13 @@ export default function HackSubmitForm({
     patchInputRef.current && (patchInputRef.current.value = "");
     modifiedRomInputRef.current && (modifiedRomInputRef.current.value = "");
   }, [patchMode]);
+
+  // Sync originalAuthor with customCreator if provided
+  React.useEffect(() => {
+    if (customCreator) {
+      setOriginalAuthor(customCreator);
+    }
+  }, [customCreator]);
 
   const uploadCovers = async (slug: string) => {
     if (!newCoverFiles || newCoverFiles.length === 0) return [] as string[];
@@ -291,8 +306,11 @@ export default function HackSubmitForm({
               if (typeof data.pokecommunity === "string") applied = applied || !!data.pokecommunity;
               if (Array.isArray(data.tags)) setTags(data.tags.filter((t: any) => typeof t === "string"));
               if (Array.isArray(data.tags)) applied = applied || data.tags.length > 0;
-              if (typeof data.originalAuthor === "string") setOriginalAuthor(data.originalAuthor);
-              if (typeof data.originalAuthor === "string") applied = applied || !!data.originalAuthor;
+              // Only load originalAuthor from draft if customCreator is not provided
+              if (!customCreator && typeof data.originalAuthor === "string") {
+                setOriginalAuthor(data.originalAuthor);
+                applied = applied || !!data.originalAuthor;
+              }
               if (data.step && Number.isInteger(data.step)) setStep(Math.min(maxSteps, Math.max(1, data.step)));
               if (typeof data.showMdPreview === "boolean") setShowMdPreview(data.showMdPreview);
               if (data.patchMode === "bps" || data.patchMode === "rom") setPatchMode(data.patchMode);
@@ -314,17 +332,18 @@ export default function HackSubmitForm({
     if (dummy || !draftKey || hydratedFromDraftRef.current) return;
     const d = initialDraftRef.current;
     if (!d || typeof d !== "object") return;
+    // Don't count originalAuthor if customCreator is provided
     const hasAny = Boolean(
-      d.title || d.summary || d.description || d.baseRom || d.platform || d.version || d.language || d.boxArt || d.discord || d.twitter || d.pokecommunity || (Array.isArray(d.tags) && d.tags.length > 0) || d.originalAuthor
+      d.title || d.summary || d.description || d.baseRom || d.platform || d.version || d.language || d.boxArt || d.discord || d.twitter || d.pokecommunity || (Array.isArray(d.tags) && d.tags.length > 0) || (!customCreator && d.originalAuthor)
     );
     if (hasAny) { hydratedFromDraftRef.current = true; setRestoredDraft(true); }
-  }, [dummy, draftKey]);
+  }, [dummy, draftKey, customCreator]);
 
   React.useEffect(() => {
     if (dummy || !draftKey || isHydrating) return;
     const handle = setTimeout(() => {
       try {
-        const data = {
+        const data: any = {
           title,
           summary,
           description,
@@ -337,11 +356,14 @@ export default function HackSubmitForm({
           twitter,
           pokecommunity,
           tags,
-          originalAuthor,
           step,
           showMdPreview,
           patchMode,
         };
+        // Only save originalAuthor if customCreator is not provided
+        if (!customCreator) {
+          data.originalAuthor = originalAuthor;
+        }
         localStorage.setItem(draftKey, JSON.stringify(data));
       } catch {
         // ignore
@@ -366,6 +388,7 @@ export default function HackSubmitForm({
     pokecommunity,
     tags,
     originalAuthor,
+    customCreator,
     step,
     showMdPreview,
     patchMode,
@@ -402,8 +425,13 @@ export default function HackSubmitForm({
       if (pokecommunity) fd.set('pokecommunity', pokecommunity);
       if (tags.length) fd.set('tags', tags.join(','));
       if (isArchive) {
-        fd.set('original_author', originalAuthor);
         fd.set('isArchive', 'true');
+      }
+      if (originalAuthor) {
+        fd.set('original_author', originalAuthor);
+      }
+      if (permissionFrom) {
+        fd.set('permission_from', permissionFrom);
       }
 
       const prepared = await prepareSubmission(fd);
@@ -521,7 +549,9 @@ export default function HackSubmitForm({
   const preview = {
     slug: slug || "preview",
     title: title || "Your hack title",
-    author: isArchive ? (originalAuthor || "Unknown") : (profile?.username ? `@${profile.username}` : "You"),
+    author: (isArchive || customCreator) ?
+      (originalAuthor || "Unknown") :
+      (profile?.username ? `@${profile.username}` : "You"),
     summary: (summary || "Short description, max 100 characters.") as string,
     description: (description || "Write a longer markdown description here.") as string,
     covers: coverPreviews,
@@ -549,6 +579,25 @@ export default function HackSubmitForm({
             <div className="flex items-center gap-2 text-[13px] text-foreground/70 animate-pulse">
               <span className="inline-block h-2 w-2 rounded-full bg-foreground/50"></span>
               Checking for existing draft…
+            </div>
+          )}
+          {customCreator && permissionFrom && (
+            <div className="flex items-center gap-3 rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-900 dark:text-blue-100">
+              <div className="flex items-center justify-center w-2 h-full">
+                <div className="inline-block h-2 w-2 rounded-full bg-blue-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold">
+                  {customCreator === permissionFrom
+                    ? `Submitting on behalf of ${customCreator} with their permission.`
+                    : `Submitting on behalf of ${customCreator}`}
+                </p>
+                {customCreator !== permissionFrom && (
+                  <p className="text-xs text-blue-800 dark:text-blue-200">
+                    You are submitting this hack with permission from {permissionFrom}.
+                  </p>
+                )}
+              </div>
             </div>
           )}
           {!isHydrating && restoredDraft && (
@@ -584,7 +633,7 @@ export default function HackSubmitForm({
                   setNewCoverFiles([]);
                   setCoverErrors([]);
                   setPatchFile(null);
-                  setOriginalAuthor("");
+                  setOriginalAuthor(customCreator || "");
                   setShowMdPreview(false);
                   setStep(1);
                   // Clear file inputs if present
@@ -692,8 +741,9 @@ export default function HackSubmitForm({
                       <input
                         value={originalAuthor}
                         onChange={(e) => setOriginalAuthor(e.target.value)}
+                        disabled={!!customCreator}
                         placeholder="Name of the original hack creator"
-                        className="h-11 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                        className="h-11 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     ) : (
                       <div role="textbox" aria-disabled className="h-11 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] flex items-center text-foreground/60 select-none">Original author name</div>

@@ -144,6 +144,7 @@ export type Database = {
           language: string
           original_author: string | null
           patch_url: string
+          permission_from: string | null
           published: boolean
           search: unknown
           slug: string
@@ -168,6 +169,7 @@ export type Database = {
           language: string
           original_author?: string | null
           patch_url: string
+          permission_from?: string | null
           published?: boolean
           search?: unknown
           slug: string
@@ -192,6 +194,7 @@ export type Database = {
           language?: string
           original_author?: string | null
           patch_url?: string
+          permission_from?: string | null
           published?: boolean
           search?: unknown
           slug?: string
@@ -349,6 +352,10 @@ export type Database = {
       get_my_claim: { Args: { claim: string }; Returns: Json }
       get_my_claims: { Args: never; Returns: Json }
       is_admin: { Args: never; Returns: boolean }
+      is_archive_hack_for_archiver: {
+        Args: { hack_slug: string }
+        Returns: boolean
+      }
       is_archiver: { Args: never; Returns: boolean }
       is_claims_admin: { Args: never; Returns: boolean }
       set_claim: {
