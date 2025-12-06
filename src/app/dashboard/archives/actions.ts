@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createServiceClient } from "@/utils/supabase/server";
 
 export async function getArchives(args: {
   page?: number;
@@ -8,6 +8,7 @@ export async function getArchives(args: {
   search?: string;
   sortBy?: "title" | "created_at" | "original_author";
   sortOrder?: "asc" | "desc";
+  filter?: "all" | "downloadable" | "informational";
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -21,20 +22,34 @@ export async function getArchives(args: {
     return { ok: false, error: "Forbidden" } as const;
   }
 
+  // Use service role client to bypass RLS entirely and avoid recursion
+  const serviceClient = await createServiceClient();
+
   const page = args.page || 1;
   const limit = args.limit || 50;
   const offset = (page - 1) * limit;
   const search = args.search?.trim() || "";
   const sortBy = args.sortBy || "created_at";
   const sortOrder = args.sortOrder || "desc";
+  const filter = args.filter || "all";
 
-  let query = supabase
+  let query = serviceClient
     .from("hacks")
-    .select("slug,title,original_author,base_rom,created_at,created_by,approved", { count: "exact" })
+    .select("slug,title,original_author,base_rom,created_at,created_by,approved,permission_from,current_patch", { count: "exact" })
     .not("original_author", "is", null)
-    .is("current_patch", null)
+    .or("current_patch.is.null,permission_from.not.is.null")
     .order(sortBy, { ascending: sortOrder === "asc" })
     .range(offset, offset + limit - 1);
+
+  // Apply archive type filter
+  if (filter === "downloadable") {
+    // Downloadable: permission_from is not null AND current_patch is not null
+    query = query.not("permission_from", "is", null).not("current_patch", "is", null);
+  } else if (filter === "informational") {
+    // Informational: current_patch is null
+    query = query.is("current_patch", null);
+  }
+  // "all" doesn't need additional filtering
 
   if (search) {
     query = query.or(`title.ilike.%${search}%,original_author.ilike.%${search}%,base_rom.ilike.%${search}%`);
@@ -60,11 +75,13 @@ export async function getArchives(args: {
     slug: h.slug,
     title: h.title,
     original_author: h.original_author,
+    permission_from: h.permission_from,
     base_rom: h.base_rom,
     created_at: h.created_at,
     created_by: h.created_by,
     creator_username: usernameById.get(h.created_by as string) || null,
     approved: h.approved,
+    current_patch: h.current_patch,
   }));
 
   return {
