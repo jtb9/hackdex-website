@@ -46,6 +46,7 @@ export async function prepareSubmission(formData: FormData) {
   const pokecommunity = (formData.get("pokecommunity") as string)?.trim();
   const tags = (formData.get("tags") as string)?.split(",").map((t) => t.trim()).filter(Boolean) || [];
   const original_author = (formData.get("original_author") as string)?.trim() || null;
+  const permission_from = (formData.get("permission_from") as string)?.trim() || null;
   const isArchive = formData.get("isArchive") === "true";
 
   // For archives, version is not required; for regular hacks, it is
@@ -85,6 +86,7 @@ export async function prepareSubmission(formData: FormData) {
     approved: isArchive, // Auto-approve archives
     patch_url: "",
     original_author: original_author || null,
+    permission_from: permission_from || null,
     current_patch: null, // Archives don't have patches
   } as HackInsert;
 
