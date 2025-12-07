@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { APIEmbed } from "discord-api-types/v10";
 import { sendDiscordMessageEmbed } from "@/utils/discord";
+import { checkEditPermission, checkPatchEditPermission } from "@/utils/hack";
 
 export async function updateHack(args: {
   slug: string;
@@ -28,23 +29,14 @@ export async function updateHack(args: {
 
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by, current_patch, original_author")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
 
-  // Check if user can edit: either they're the creator, or they're admin/archiver editing an Archive hack
-  const canEditAsCreator = hack.created_by === user.id;
-  const isArchive = hack.original_author != null && hack.current_patch === null;
-  let canEditAsAdminOrArchiver = false;
-  if (isArchive && !canEditAsCreator) {
-    const { data: isAdmin } = await supabase.rpc("is_admin");
-    const { data: isArchiver } = await supabase.rpc("is_archiver");
-    canEditAsAdminOrArchiver = !!isAdmin || !!isArchiver;
-  }
-
-  if (!canEditAsCreator && !canEditAsAdminOrArchiver) {
+  const permission = await checkEditPermission(hack, user.id, supabase);
+  if (!permission.canEdit) {
     return { ok: false, error: "Forbidden" } as const;
   }
 
@@ -128,12 +120,16 @@ export async function saveHackCovers(args: { slug: string; coverUrls: string[] }
 
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkEditPermission(hack, user.id, supabase);
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   // Fetch current covers to compute removals and preserve alt text
   const { data: currentRows, error: cErr } = await supabase
@@ -204,15 +200,22 @@ export async function presignNewPatchVersion(args: { slug: string; version: stri
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Unauthorized" } as const;
 
-  // Ensure hack exists and belongs to user
+  // Ensure hack exists and user has permission
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkPatchEditPermission(hack, user.id, supabase);
+  if (permission.error) {
+    return { ok: false, error: permission.error } as const;
+  }
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   // Enforce unique version per hack
   const { data: existing } = await supabase
@@ -241,15 +244,19 @@ export async function presignCoverUpload(args: { slug: string; objectKey: string
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Unauthorized" } as const;
 
-  // Ensure hack exists and belongs to user
+  // Ensure hack exists and user has permission
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkEditPermission(hack, user.id, supabase);
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   const client = getMinioClient();
   // 10 minutes to upload

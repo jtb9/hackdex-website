@@ -20,6 +20,7 @@ import { FaCircleCheck } from "react-icons/fa6";
 import { sortOrderedTags } from "@/utils/format";
 import { RiArchiveStackFill } from "react-icons/ri";
 import { getCoverSignedUrls } from "@/app/hack/actions";
+import { isInformationalArchiveHack, isDownloadableArchiveHack, isArchiveHack, checkEditPermission } from "@/utils/hack";
 
 interface HackDetailProps {
   params: Promise<{ slug: string }>;
@@ -46,7 +47,7 @@ export async function generateMetadata({ params }: HackDetailProps): Promise<Met
   const supabase = await createClient();
   const { data: hack } = await supabase
     .from("hacks")
-    .select("title,summary,approved,base_rom,box_art,created_by,created_at,updated_at,original_author,current_patch")
+    .select("title,summary,approved,base_rom,box_art,created_by,created_at,updated_at,original_author,current_patch,permission_from")
     .eq("slug", slug)
     .maybeSingle();
   if (!hack) return { title: "Hack not found" };
@@ -63,7 +64,7 @@ export async function generateMetadata({ params }: HackDetailProps): Promise<Met
     description: 'This hack is pending approval by an admin.',
   } satisfies Metadata;
 
-  const isArchive = hack.original_author != null && hack.current_patch === null;
+  const isArchive = isArchiveHack(hack);
   const baseRomName = baseRoms.find((r) => r.id === hack.base_rom)?.name ?? "Pokémon";
   const pageUrl = `/hack/${slug}`;
   const title = isArchive ? `${hack.title} | Archive` : `${hack.title} | ROM hack download`;
@@ -116,14 +117,11 @@ export default async function HackDetail({ params }: HackDetailProps) {
   const supabase = await createClient();
   const { data: hack, error } = await supabase
     .from("hacks")
-    .select("slug,title,summary,description,base_rom,created_at,updated_at,downloads,current_patch,box_art,social_links,created_by,approved,original_author")
+    .select("slug,title,summary,description,base_rom,created_at,updated_at,downloads,current_patch,box_art,social_links,created_by,approved,original_author,permission_from")
     .eq("slug", slug)
     .maybeSingle();
   if (error || !hack) return notFound();
   const baseRom = baseRoms.find((r) => r.id === hack.base_rom);
-
-  // Detect if this is an Archive hack
-  const isArchive = hack.original_author != null && hack.current_patch === null;
 
   let images: string[] = [];
   const { data: covers } = await supabase
@@ -158,8 +156,14 @@ export default async function HackDetail({ params }: HackDetailProps) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const canEdit = !!user && user.id === (hack.created_by as string);
-  const canUploadPatch = (!!user && user.id === (hack.created_by as string) && !isArchive);
+  const {
+    canEdit,
+    canEditAsAdminOrArchiver,
+    isInformationalArchive,
+    isDownloadableArchive,
+    isArchive,
+  } = await checkEditPermission(hack, user?.id as string, supabase);
+  const canUploadPatch = canEdit && !isInformationalArchive;
 
   let isAdmin = false;
   if ((!hack.approved && !canEdit) || isArchive) {
@@ -169,6 +173,10 @@ export default async function HackDetail({ params }: HackDetailProps) {
     } else if (!isArchive) {
       return notFound();
     }
+  }
+
+  if (isArchive && !isAdmin && !canEditAsAdminOrArchiver) {
+    return notFound();
   }
 
   // Get patch info, but don't sign URL yet (happens on user interaction)
@@ -254,7 +262,7 @@ export default async function HackDetail({ params }: HackDetailProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serialize(jsonLd, { isJSON: true }) }}
       />
-      {!isArchive && (
+      {!isInformationalArchive && (
         <HackActions
           title={hack.title}
           version={patchVersion || "Pre-release"}
@@ -267,7 +275,7 @@ export default async function HackDetail({ params }: HackDetailProps) {
         />
       )}
 
-      {isArchive && (
+      {isInformationalArchive && (
         <div className="flex flex-row items-center gap-4 mx-6 mt-6 rounded-lg border-2 border-rose-500/40 bg-rose-50 dark:bg-rose-900/10 p-4 md:pl-6">
           <div className="flex items-center gap-4 md:gap-6">
             <div className="flex-shrink-0">
@@ -434,7 +442,7 @@ export default async function HackDetail({ params }: HackDetailProps) {
               </div>
             </div>
           )}
-          {isArchive ? (
+          {isInformationalArchive ? (
             <div className="card overflow-hidden p-4 mt-4 text-sm text-foreground/60">
               <p>
                 This is an archive entry for <span className="font-semibold">{hack.title}</span> preserved for informational purposes.
@@ -449,7 +457,7 @@ export default async function HackDetail({ params }: HackDetailProps) {
           ) : (
             <div className="card overflow-hidden p-4 mt-4 text-sm text-foreground/60">
               <p>
-                This page provides the official patch file for <span className="font-semibold">{hack.title}</span>. You can safely download the patched ROM for this hack
+                This page provides {isDownloadableArchive ? "an archived" : "the official"} patch file for <span className="font-semibold">{hack.title}</span>{isDownloadableArchive ? " with permission from the original creator" : ""}. You can safely download the patched ROM for this hack
                 using our built-in patcher.
               </p>
               <p className="mt-2">

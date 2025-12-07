@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa6";
 import Link from "next/link";
 import { getCoverSignedUrls } from "@/app/hack/actions";
+import { checkEditPermission } from "@/utils/hack";
 
 interface EditPageProps {
   params: Promise<{ slug: string }>;
@@ -19,22 +20,16 @@ export default async function EditHackPage({ params }: EditPageProps) {
 
   const { data: hack } = await supabase
     .from("hacks")
-    .select("slug,title,summary,description,base_rom,language,box_art,social_links,created_by,current_patch,original_author")
+    .select("slug,title,summary,description,base_rom,language,box_art,social_links,created_by,current_patch,original_author,permission_from")
     .eq("slug", slug)
     .maybeSingle();
   if (!hack) return notFound();
 
   // Check if user can edit: either they're the creator, or they're admin/archiver editing an Archive hack
-  const canEditAsCreator = hack.created_by === user!.id;
-  const isArchive = hack.original_author != null && hack.current_patch === null;
-  let canEditAsAdminOrArchiver = false;
-  if (isArchive && !canEditAsCreator) {
-    // Admin check automatically included with is_archiver check
-    const { data: isArchiver } = await supabase.rpc("is_archiver");
-    canEditAsAdminOrArchiver = !!isArchiver;
-  }
+  const permission = await checkEditPermission(hack, user!.id, supabase);
+  const { isInformationalArchive, isDownloadableArchive, isArchive } = permission;
 
-  if (!canEditAsCreator && !canEditAsAdminOrArchiver) {
+  if (!permission.canEdit) {
     redirect(`/hack/${slug}`);
   }
 
