@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import HackPatchForm from "@/components/Hack/HackPatchForm";
 import Link from "next/link";
 import { FaChevronLeft } from "react-icons/fa6";
+import { isInformationalArchiveHack, isDownloadableArchiveHack, canEditAsCreator, canEditAsArchiver } from "@/utils/hack";
 
 interface EditPatchPageProps {
   params: Promise<{ slug: string }>;
@@ -18,12 +19,17 @@ export default async function EditPatchPage({ params }: EditPatchPageProps) {
 
   const { data: hack } = await supabase
     .from("hacks")
-    .select("slug,base_rom,created_by,title,current_patch")
+    .select("slug,base_rom,created_by,title,current_patch,original_author,permission_from")
     .eq("slug", slug)
     .maybeSingle();
   if (!hack) return notFound();
-  if (hack.created_by !== user!.id) {
-    redirect(`/hack/${slug}`);
+  if (!canEditAsCreator(hack, user!.id)) {
+    const isInformationalArchive = isInformationalArchiveHack(hack);
+    const isDownloadableArchive = isDownloadableArchiveHack(hack);
+    const isEditableByArchiver = await canEditAsArchiver(hack, user!.id, supabase);
+
+    if (isInformationalArchive) redirect(`/hack/${slug}`);
+    if (isDownloadableArchive && !isEditableByArchiver) redirect(`/hack/${slug}`);
   }
 
   const { data: patchRows } = await supabase

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { getMinioClient, PATCHES_BUCKET } from "@/utils/minio/server";
+import { isInformationalArchiveHack } from "@/utils/hack";
 
 export async function getSignedPatchUrl(slug: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const supabase = await createClient();
@@ -34,9 +35,8 @@ export async function getSignedPatchUrl(slug: string): Promise<{ ok: true; url: 
     }
   }
 
-  // Check if this is an Archive hack (no patch available)
-  const isArchive = hack.original_author != null && hack.current_patch === null;
-  if (isArchive) {
+  // Check if this is an Informational Archive hack (no patch available)
+  if (isInformationalArchiveHack(hack)) {
     return { ok: false, error: "Archive hacks do not have patch files available" };
   }
 

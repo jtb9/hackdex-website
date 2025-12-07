@@ -6,6 +6,7 @@ import { getMinioClient, PATCHES_BUCKET } from "@/utils/minio/server";
 import { sendDiscordMessageEmbed } from "@/utils/discord";
 import { APIEmbed } from "discord-api-types/v10";
 import { slugify } from "@/utils/format";
+import { checkEditPermission, checkPatchEditPermission } from "@/utils/hack";
 
 type HackInsert = TablesInsert<"hacks">;
 
@@ -119,15 +120,19 @@ export async function saveHackCovers(args: { slug: string; coverUrls: string[] }
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Unauthorized" } as const;
 
-  // Ensure hack exists and belongs to user (created_by) to prevent spoof
+  // Ensure hack exists and user has permission
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkEditPermission(hack, user.id, supabase);
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   // Insert covers (overwrite positions)
   if (args.coverUrls && args.coverUrls.length > 0) {
@@ -154,15 +159,22 @@ export async function presignPatchAndSaveCovers(args: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Unauthorized" } as const;
 
-  // Ensure hack exists and belongs to user (created_by) to prevent spoof
+  // Ensure hack exists and user has permission
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by")
+    .select("slug, created_by, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkPatchEditPermission(hack, user.id, supabase);
+  if (permission.error) {
+    return { ok: false, error: permission.error } as const;
+  }
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   // Insert covers (overwrite positions)
   if (args.coverUrls && args.coverUrls.length > 0) {
@@ -192,12 +204,19 @@ export async function confirmPatchUpload(args: { slug: string; objectKey: string
 
   const { data: hack, error: hErr } = await supabase
     .from("hacks")
-    .select("slug, created_by, title")
+    .select("slug, created_by, title, current_patch, original_author, permission_from")
     .eq("slug", args.slug)
     .maybeSingle();
   if (hErr) return { ok: false, error: hErr.message } as const;
   if (!hack) return { ok: false, error: "Hack not found" } as const;
-  if (hack.created_by !== user.id) return { ok: false, error: "Forbidden" } as const;
+
+  const permission = await checkPatchEditPermission(hack, user.id, supabase);
+  if (permission.error) {
+    return { ok: false, error: permission.error } as const;
+  }
+  if (!permission.canEdit) {
+    return { ok: false, error: "Forbidden" } as const;
+  }
 
   // Enforce unique version per hack defensively (avoid race with presign step)
   const { data: existing, error: vErr } = await supabase

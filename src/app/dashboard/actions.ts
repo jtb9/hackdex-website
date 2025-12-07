@@ -2,6 +2,8 @@
 
 import { unstable_cache as cache } from "next/cache";
 import { createClient, createServiceClient } from "@/utils/supabase/server";
+import { canEditAsCreator, canEditAsAdminOrArchiver } from "@/utils/hack";
+import { checkUserRoles } from "@/utils/user";
 
 interface SeriesDataset {
   slug: string;
@@ -48,16 +50,40 @@ function buildUtcDateLabels(days: number, endExclusiveUtc: Date): string[] {
 export const getDownloadsSeriesAll = async ({ days = 30 }: { days?: number }): Promise<DownloadsSeriesAll> => {
   const { startISO, endISO, ttl, dayStamp, startOfTodayUtc } = getUtcBounds(days);
 
-  // Resolve user and owned slugs OUTSIDE cache (cookies not allowed in cache)
+  // Resolve user and accessible slugs OUTSIDE cache (cookies not allowed in cache)
   const supa = await createClient();
   const { data: userResp } = await supa.auth.getUser();
   const user = userResp.user;
   if (!user) throw new Error("Unauthorized");
-  const { data: hacks } = await supa
+
+  // Get hacks owned by user
+  const { data: ownedHacks } = await supa
     .from("hacks")
-    .select("slug")
+    .select("slug,created_by,current_patch,original_author,permission_from")
     .eq("created_by", user.id);
-  const slugs = (hacks ?? []).map((h) => h.slug);
+  const ownedSlugs = (ownedHacks ?? []).map((h) => h.slug);
+
+  // Get archive hacks that user can edit as archiver
+  const { data: allArchiveHacks } = await supa
+    .from("hacks")
+    .select("slug,created_by,current_patch,original_author,permission_from")
+    .not("original_author", "is", null);
+
+  const accessibleArchiveSlugs: string[] = [];
+  if (allArchiveHacks) {
+    const { isAdmin, isArchiver } = await checkUserRoles(supa);
+    for (const hack of allArchiveHacks) {
+      // Skip if already owned
+      if (canEditAsCreator(hack, user.id)) continue;
+
+      // Check if user can edit as archiver (function already checks if it's an archive)
+      if (await canEditAsAdminOrArchiver(hack, user.id, supa, { roles: { isAdmin, isArchiver } })) {
+        accessibleArchiveSlugs.push(hack.slug);
+      }
+    }
+  }
+
+  const slugs = [...ownedSlugs, ...accessibleArchiveSlugs];
 
   const runner = cache(
     async () => {
@@ -141,14 +167,22 @@ export const getHackInsights = async ({ slug }: { slug: string }): Promise<HackI
   if (!user) throw new Error("Unauthorized");
   const { data: hack } = await supa
     .from("hacks")
-    .select("slug,created_by,current_patch,created_at")
+    .select("slug,created_by,current_patch,created_at,original_author,permission_from")
     .eq("slug", slug)
     .maybeSingle();
   if (!hack) throw new Error("Not found");
-  let isOwner = hack.created_by === user.id;
+
+  // Check if user can access: owner, admin, or archiver for archive hacks
+  const isOwner = canEditAsCreator(hack, user.id);
   if (!isOwner) {
     const { data: admin } = await supa.rpc("is_admin");
-    if (!admin) throw new Error("Forbidden");
+    if (admin) {
+      // Admin can access any hack
+    } else if (await canEditAsAdminOrArchiver(hack, user.id, supa)) {
+      // Archiver can access archive hacks (function already checks if it's an archive)
+    } else {
+      throw new Error("Forbidden");
+    }
   }
 
   const currentPatchId = (hack.current_patch as number | null) ?? null;
