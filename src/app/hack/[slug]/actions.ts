@@ -3,6 +3,9 @@
 import { createClient } from "@/utils/supabase/server";
 import { getMinioClient, PATCHES_BUCKET } from "@/utils/minio/server";
 import { isInformationalArchiveHack } from "@/utils/hack";
+import { sendDiscordMessageEmbed } from "@/utils/discord";
+import { headers } from "next/headers";
+import { validateEmail } from "@/utils/auth";
 
 export async function getSignedPatchUrl(slug: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const supabase = await createClient();
@@ -66,5 +69,127 @@ export async function getSignedPatchUrl(slug: string): Promise<{ ok: true; url: 
     console.error("Error signing patch URL:", error);
     return { ok: false, error: "Failed to generate download URL" };
   }
+}
+
+export async function submitHackReport(data: {
+  slug: string;
+  reportType: "hateful" | "harassment" | "misleading" | "stolen";
+  details: string | null;
+  email: string | null;
+  isImpersonating: boolean | null;
+}): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+
+  // Validate hack exists
+  const { data: hack, error: hackError } = await supabase
+    .from("hacks")
+    .select("slug, title")
+    .eq("slug", data.slug)
+    .maybeSingle();
+
+  if (hackError || !hack) {
+    return { error: "Hack not found" };
+  }
+
+  // Validate email if provided (for stolen reports)
+  if (data.reportType === "stolen" && data.email) {
+    const emailLower = data.email.trim().toLowerCase();
+    const { error: emailError } = validateEmail(emailLower);
+    if (emailError) {
+      return { error: emailError };
+    }
+  }
+
+  // Validate required fields
+  if (data.reportType === "misleading" && !data.details?.trim()) {
+    return { error: "Details are required for misleading reports" };
+  }
+
+  if (data.reportType === "stolen") {
+    if (!data.email?.trim()) {
+      return { error: "Email is required for stolen hack reports" };
+    }
+    if (!data.details?.trim()) {
+      return { error: "Details are required for stolen hack reports" };
+    }
+  }
+
+  // Build hack URL
+  const hdrs = await headers();
+  const siteBase = process.env.NEXT_PUBLIC_SITE_URL ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "") : "";
+  const proto = siteBase ? "" : (hdrs.get("x-forwarded-proto") || "https");
+  const host = siteBase ? "" : (hdrs.get("host") || "");
+  const baseUrl = siteBase || (proto && host ? `${proto}://${host}` : "");
+  const hackUrl = baseUrl ? `${baseUrl}/hack/${data.slug}` : `/hack/${data.slug}`;
+
+  // Format report type for display
+  const reportTypeLabels: Record<typeof data.reportType, string> = {
+    hateful: "Hateful Content",
+    harassment: "Harassment",
+    misleading: "Misleading",
+    stolen: "My Hack Was Stolen",
+  };
+
+  // Build Discord embed fields
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+    {
+      name: "Report Type",
+      value: reportTypeLabels[data.reportType],
+      inline: false,
+    },
+    {
+      name: "Hack",
+      value: `[${hack.title}](${hackUrl})`,
+      inline: false,
+    },
+  ];
+
+  if (data.details) {
+    fields.push({
+      name: "Details",
+      value: data.details.length > 1000 ? data.details.substring(0, 1000) + "..." : data.details,
+      inline: false,
+    });
+  }
+
+  if (data.reportType === "stolen") {
+    if (data.email) {
+      fields.push({
+        name: "Contact Email",
+        value: data.email.trim().toLowerCase(),
+        inline: false,
+      });
+    }
+    if (data.isImpersonating !== null) {
+      fields.push({
+        name: "Is Uploader Impersonating?",
+        value: data.isImpersonating ? "Yes" : "No",
+        inline: true,
+      });
+    }
+  }
+
+  // Send Discord webhook
+  if (process.env.DISCORD_WEBHOOK_ADMIN_URL) {
+    try {
+      await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_URL, [
+        {
+          title: "Hack Report",
+          description: `A new report has been submitted for [${hack.title}](${hackUrl})`,
+          color: 0xff6b6b, // Red color for reports
+          fields,
+          footer: {
+            text: `Hack Slug: ${data.slug}`,
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } catch (error) {
+      console.error("Error sending Discord webhook:", error);
+      return { error: "Failed to submit report. Please try again later." };
+    }
+  }
+
+  return { error: null };
 }
 
