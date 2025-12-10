@@ -113,6 +113,8 @@ export default function HackSubmitForm({
   const [patchFile, setPatchFile] = React.useState<File | null>(null);
   const [patchMode, setPatchMode] = React.useState<"bps" | "rom">(() => (initialDraftRef.current?.patchMode === "rom" ? "rom" : "bps"));
   const [genStatus, setGenStatus] = React.useState<"idle" | "generating" | "ready" | "error">("idle");
+  const [checksumStatus, setChecksumStatus] = React.useState<"idle" | "validating" | "valid" | "invalid" | "unknown">("idle");
+  const [checksumError, setChecksumError] = React.useState<string>("");
   const [genError, setGenError] = React.useState<string>("");
   const [submitting, setSubmitting] = React.useState(false);
   const maxSteps = isArchive ? 3 : 4;
@@ -543,6 +545,52 @@ export default function HackSubmitForm({
     } catch (err: any) {
       setGenStatus("error");
       setGenError(err?.message || "Failed to generate patch.");
+    }
+  }
+
+  async function onUploadPatch(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      setChecksumStatus("validating");
+      setChecksumError("");
+
+      const patch = e.target.files?.[0] || null;
+      if (!patch) {
+        setChecksumStatus("idle");
+        setChecksumError("");
+        setPatchFile(null);
+        return;
+      }
+
+      if (!baseRomEntry) {
+        setChecksumStatus("unknown");
+        setChecksumError("A checksum is not available to validate this patch file. Proceed at your own risk, or upload your modified ROM instead.");
+        return;
+      }
+
+      // Verify that the patch is a valid BPS file for the selected base ROM
+      const bps = BPS.fromFile(new BinFile(await patch.arrayBuffer()));
+      if (bps.sourceChecksum === 0 || bps.sourceChecksum === undefined) {
+        setChecksumStatus("unknown");
+        setChecksumError("A checksum is not available to validate this patch file. Proceed at your own risk, or upload your modified ROM instead.");
+        return;
+      }
+
+      const baseRomChecksum = parseInt(baseRomEntry.crc32, 16);
+      if (bps.sourceChecksum !== baseRomChecksum) {
+        setChecksumStatus("invalid");
+        setChecksumError("Checksum validation failed. The patch file is not compatible with the selected base ROM.");
+        return;
+      }
+
+      // All checks passed, set the checksum status to valid
+      setChecksumStatus("valid");
+      setChecksumError("");
+
+      setPatchFile(patch);
+    }
+    catch (err: any) {
+      setChecksumStatus("unknown");
+      setChecksumError(err?.message || "Failed to validate patch file.");
     }
   }
 
@@ -1005,12 +1053,16 @@ export default function HackSubmitForm({
                       <div className="grid gap-2">
                         <input
                           ref={patchInputRef}
-                          onChange={(e) => setPatchFile(e.target.files?.[0] || null)}
+                          onChange={onUploadPatch}
                           type="file"
                           accept=".bps"
                           className="rounded-md bg-[var(--surface-2)] px-3 py-2 text-sm italic text-foreground/50 ring-1 ring-inset ring-[var(--border)] file:bg-black/10 dark:file:bg-[var(--surface-2)] file:text-foreground/80 file:text-sm file:font-medium file:not-italic file:rounded-md file:border-0 file:px-3 file:py-2 file:mr-2 file:cursor-pointer"
                         />
                         <p className="text-xs text-foreground/60">Upload a BPS patch file.</p>
+                        {checksumStatus === "validating" && <div className="text-xs text-foreground/70">Validating checksum…</div>}
+                        {checksumStatus === "valid" && <div className="text-xs text-emerald-400/90">Checksum valid.</div>}
+                        {checksumStatus === "invalid" && !!checksumError && <div className="text-xs text-red-400">{checksumError}</div>}
+                        {checksumStatus === "unknown" && !!checksumError && <div className="text-xs text-amber-400/90">{checksumError}</div>}
                       </div>
                     )}
 
