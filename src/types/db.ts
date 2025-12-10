@@ -263,27 +263,48 @@ export type Database = {
       }
       patches: {
         Row: {
+          archived: boolean
+          archived_at: string | null
+          breaks_saves: boolean
           bucket: string
+          changelog: string | null
           created_at: string
           filename: string
           id: number
           parent_hack: string | null
+          published: boolean
+          published_at: string | null
+          updated_at: string
           version: string
         }
         Insert: {
+          archived?: boolean
+          archived_at?: string | null
+          breaks_saves?: boolean
           bucket: string
+          changelog?: string | null
           created_at?: string
           filename: string
           id?: number
           parent_hack?: string | null
+          published?: boolean
+          published_at?: string | null
+          updated_at?: string
           version: string
         }
         Update: {
+          archived?: boolean
+          archived_at?: string | null
+          breaks_saves?: boolean
           bucket?: string
+          changelog?: string | null
           created_at?: string
           filename?: string
           id?: number
           parent_hack?: string | null
+          published?: boolean
+          published_at?: string | null
+          updated_at?: string
           version?: string
         }
         Relationships: [
