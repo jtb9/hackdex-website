@@ -71,7 +71,11 @@ export async function getSignedPatchUrl(slug: string): Promise<{ ok: true; url: 
   }
 }
 
-export async function updatePatchDownloadCount(patchId: number, deviceId: string): Promise<{ ok: true; didIncrease: boolean } | { ok: false; error: string }> {
+export async function updatePatchDownloadCount(patchId: number, deviceIdObscured: string[]): Promise<{ ok: true; didIncrease: boolean } | { ok: false; error: string }> {
+  if (deviceIdObscured.length !== 5) {
+    return { ok: false, error: "Invalid device ID" };
+  }
+  const deviceId = deviceIdObscured.join("-");
   const supabase = await createClient();
   const { error: updateError } = await supabase
     .from("patch_downloads")
