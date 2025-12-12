@@ -221,7 +221,8 @@ const HackActions: React.FC<HackActionsProps> = ({
             deviceId = crypto.randomUUID();
             localStorage.setItem(key, deviceId);
           }
-          const result = await updatePatchDownloadCount(patchId, deviceId);
+          const deviceIdObscured = deviceId.split("-");
+          const result = await updatePatchDownloadCount(patchId, deviceIdObscured);
           if (!result.ok) {
             console.error(result.error);
           } else if (result.didIncrease) {
