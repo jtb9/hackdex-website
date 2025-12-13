@@ -221,7 +221,7 @@ const HackActions: React.FC<HackActionsProps> = ({
             deviceId = crypto.randomUUID();
             localStorage.setItem(key, deviceId);
           }
-          // Defer update to next tick to avoid Safari cancelling the request
+          // Defer count update to avoid Safari cancelling the request
           setTimeout(async () => {
             const deviceIdObscured = deviceId.split("-");
             const result = await updatePatchDownloadCount(patchId, deviceIdObscured);
@@ -230,9 +230,11 @@ const HackActions: React.FC<HackActionsProps> = ({
             } else if (result.didIncrease) {
               window.dispatchEvent(new CustomEvent<DownloadEventDetail>("hack:patch-applied", { detail: { slug: hackSlug } }));
             }
-          }, 0);
+          }, 50);
         }
-      } catch {}
+      } catch (e: any) {
+        console.error(e);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to patch ROM");
       setStatus("idle");
