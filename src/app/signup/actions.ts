@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { AuthError } from '@supabase/supabase-js'
+import { validateTurnstileToken } from 'next-turnstile'
+import { v4 } from 'uuid';
 
 import { createClient } from '@/utils/supabase/server'
 import { validateEmail, validatePassword } from '@/utils/auth'
@@ -32,6 +34,27 @@ export interface AuthActionState {
 }
 
 export async function signup(state: AuthActionState, payload: FormData) {
+  // Validate Turnstile token first
+  const token = payload.get('cf-turnstile-response');
+  if (!token || typeof token !== 'string') {
+    return { error: 'Verification failed. Please try again.' };
+  }
+
+  try {
+    const result = await validateTurnstileToken({
+      token,
+      secretKey: process.env.TURNSTILE_SECRET_KEY!,
+      idempotencyKey: v4(),
+    });
+
+    if (!result.success) {
+      return { error: 'Verification failed. Please try again.' };
+    }
+  } catch (error) {
+    console.error('Turnstile validation error:', error);
+    return { error: 'Verification failed. Please try again.' };
+  }
+
   const supabase = await createClient()
 
   const data = {

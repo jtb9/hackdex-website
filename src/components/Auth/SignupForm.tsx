@@ -3,6 +3,7 @@
 import React, { useActionState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FiEye, FiEyeOff } from "react-icons/fi";
+import { Turnstile } from "next-turnstile";
 import { AuthActionState, signup } from "@/app/signup/actions";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { validateEmail, validatePassword } from "@/utils/auth";
@@ -17,10 +18,23 @@ export default function SignupForm() {
   const [showPassword, setShowPassword] = React.useState(false);
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = React.useState<string | undefined>(undefined);
+  const [turnstileError, setTurnstileError] = React.useState<string | null>(null);
+  const [turnstileKey, setTurnstileKey] = React.useState(0);
 
   const [state, formAction, isPending] = useActionState<AuthActionState, FormData>(signup, { error: null });
   const passwordsMatch = password === confirm;
   const isValid = !emailError && !passwordError && passwordsMatch;
+
+  // Reset Turnstile token and widget on error to allow retry
+  useEffect(() => {
+    if (state?.error && !isPending) {
+      setTurnstileToken(undefined);
+      setTurnstileError(null);
+      // Force Turnstile widget to reset by changing key
+      setTurnstileKey((prev) => prev + 1);
+    }
+  }, [state?.error, isPending]);
 
   useEffect(() => {
     const { error } = validateEmail(email);
@@ -50,6 +64,11 @@ export default function SignupForm() {
       {(state?.error && !isPending) && (
         <div className="rounded-md bg-red-500/10 ring-1 ring-red-600/40 px-3 py-2 text-sm text-red-300">
           {state?.error}
+        </div>
+      )}
+      {turnstileError && (
+        <div className="rounded-md bg-red-500/10 ring-1 ring-red-600/40 px-3 py-2 text-sm text-red-300">
+          {turnstileError}
         </div>
       )}
       <div className="grid gap-2">
@@ -138,10 +157,27 @@ export default function SignupForm() {
       </div>
 
       <div className="flex flex-col items-center gap-3">
+        <Turnstile
+          key={turnstileKey}
+          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+          onVerify={(token) => {
+            setTurnstileToken(token);
+            setTurnstileError(null);
+          }}
+          onError={(error) => {
+            setTurnstileToken(undefined);
+            setTurnstileError("Verification failed. Please try again.");
+            console.error("Turnstile error:", error);
+          }}
+          onExpire={() => {
+            setTurnstileToken(undefined);
+          }}
+          theme="auto"
+        />
         <button
           type="submit"
           formAction={formAction}
-          disabled={!isValid || isPending}
+          disabled={!isValid || isPending || !turnstileToken}
           className="shine-wrap btn-premium h-11 min-w-[7.5rem] text-sm font-semibold hover:cursor-pointer dark:disabled:opacity-70 disabled:cursor-not-allowed disabled:[box-shadow:0_0_0_1px_var(--border)]"
         >
           <span>Sign up</span>
