@@ -34,25 +34,29 @@ export interface AuthActionState {
 }
 
 export async function signup(state: AuthActionState, payload: FormData) {
-  // Validate Turnstile token first
-  const token = payload.get('cf-turnstile-response');
-  if (!token || typeof token !== 'string') {
-    return { error: 'Verification failed. Please try again.' };
-  }
-
-  try {
-    const result = await validateTurnstileToken({
-      token,
-      secretKey: process.env.TURNSTILE_SECRET_KEY!,
-      idempotencyKey: v4(),
-    });
-
-    if (!result.success) {
+  // Validate Turnstile token if enabled
+  const useTurnstile = process.env.NEXT_PUBLIC_USE_TURNSTILE !== 'false';
+  
+  if (useTurnstile) {
+    const token = payload.get('cf-turnstile-response');
+    if (!token || typeof token !== 'string') {
       return { error: 'Verification failed. Please try again.' };
     }
-  } catch (error) {
-    console.error('Turnstile validation error:', error);
-    return { error: 'Verification failed. Please try again.' };
+
+    try {
+      const result = await validateTurnstileToken({
+        token,
+        secretKey: process.env.TURNSTILE_SECRET_KEY!,
+        idempotencyKey: v4(),
+      });
+
+      if (!result.success) {
+        return { error: 'Verification failed. Please try again.' };
+      }
+    } catch (error) {
+      console.error('Turnstile validation error:', error);
+      return { error: 'Verification failed. Please try again.' };
+    }
   }
 
   const supabase = await createClient()

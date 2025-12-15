@@ -8,6 +8,8 @@ import { AuthActionState, signup } from "@/app/signup/actions";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { validateEmail, validatePassword } from "@/utils/auth";
 
+const useTurnstile = process.env.NEXT_PUBLIC_USE_TURNSTILE !== 'false';
+
 export default function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,7 +30,7 @@ export default function SignupForm() {
 
   // Reset Turnstile token and widget on error to allow retry
   useEffect(() => {
-    if (state?.error && !isPending) {
+    if (state?.error && !isPending && useTurnstile) {
       setTurnstileToken(undefined);
       setTurnstileError(null);
       // Force Turnstile widget to reset by changing key
@@ -157,27 +159,29 @@ export default function SignupForm() {
       </div>
 
       <div className="flex flex-col items-center gap-3">
-        <Turnstile
-          key={turnstileKey}
-          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-          onVerify={(token) => {
-            setTurnstileToken(token);
-            setTurnstileError(null);
-          }}
-          onError={(error) => {
-            setTurnstileToken(undefined);
-            setTurnstileError("Verification failed. Please try again.");
-            console.error("Turnstile error:", error);
-          }}
-          onExpire={() => {
-            setTurnstileToken(undefined);
-          }}
-          theme="auto"
-        />
+        {useTurnstile && (
+          <Turnstile
+            key={turnstileKey}
+            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+            onVerify={(token) => {
+              setTurnstileToken(token);
+              setTurnstileError(null);
+            }}
+            onError={(error) => {
+              setTurnstileToken(undefined);
+              setTurnstileError("Verification failed. Please try again.");
+              console.error("Turnstile error:", error);
+            }}
+            onExpire={() => {
+              setTurnstileToken(undefined);
+            }}
+            theme="auto"
+          />
+        )}
         <button
           type="submit"
           formAction={formAction}
-          disabled={!isValid || isPending || !turnstileToken}
+          disabled={!isValid || isPending || (useTurnstile && !turnstileToken)}
           className="shine-wrap btn-premium h-11 min-w-[7.5rem] text-sm font-semibold hover:cursor-pointer dark:disabled:opacity-70 disabled:cursor-not-allowed disabled:[box-shadow:0_0_0_1px_var(--border)]"
         >
           <span>Sign up</span>

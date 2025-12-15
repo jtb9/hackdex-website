@@ -8,6 +8,8 @@ import { AuthActionState, login } from "@/app/login/actions";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthContext } from "@/contexts/AuthContext";
 
+const useTurnstile = process.env.NEXT_PUBLIC_USE_TURNSTILE !== 'false';
+
 export default function LoginForm() {
   const router = useRouter();
   const { user, setUser } = useAuthContext();
@@ -32,7 +34,7 @@ export default function LoginForm() {
 
   // Reset Turnstile token and widget on error to allow retry
   useEffect(() => {
-    if (state?.error && state.error !== null) {
+    if (state?.error && state.error !== null && useTurnstile) {
       setTurnstileToken(undefined);
       setTurnstileError(null);
       // Force Turnstile widget to reset by changing key
@@ -136,27 +138,29 @@ export default function LoginForm() {
         ) : (
           <div className="h-3" />
         )}
-        <Turnstile
-          key={turnstileKey}
-          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-          onVerify={(token) => {
-            setTurnstileToken(token);
-            setTurnstileError(null);
-          }}
-          onError={(error) => {
-            setTurnstileToken(undefined);
-            setTurnstileError("Verification failed. Please try again.");
-            console.error("Turnstile error:", error);
-          }}
-          onExpire={() => {
-            setTurnstileToken(undefined);
-          }}
-          theme="auto"
-        />
+        {useTurnstile && (
+          <Turnstile
+            key={turnstileKey}
+            siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+            onVerify={(token) => {
+              setTurnstileToken(token);
+              setTurnstileError(null);
+            }}
+            onError={(error) => {
+              setTurnstileToken(undefined);
+              setTurnstileError("Verification failed. Please try again.");
+              console.error("Turnstile error:", error);
+            }}
+            onExpire={() => {
+              setTurnstileToken(undefined);
+            }}
+            theme="auto"
+          />
+        )}
         <button
           type="submit"
           formAction={formAction}
-          disabled={!isValid || !turnstileToken}
+          disabled={!isValid || (useTurnstile && !turnstileToken)}
           className="shine-wrap btn-premium h-11 min-w-[7.5rem] text-sm font-semibold dark:disabled:opacity-70 disabled:cursor-not-allowed disabled:[box-shadow:0_0_0_1px_var(--border)]"
         >
           <span>Log in</span>
