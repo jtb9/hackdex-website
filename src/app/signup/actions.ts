@@ -72,24 +72,10 @@ export async function signup(state: AuthActionState, payload: FormData) {
     return { error: passwordError };
   }
 
-  const { data: signUpResult, error } = await supabase.auth.signUp(data)
+  const { error } = await supabase.auth.signUp(data)
 
   if (error) {
     return { error: getErrorMessage(error) };
-  }
-
-  const userId = signUpResult.user?.id || null
-  if (process.env.DISCORD_WEBHOOK_ADMIN_URL) {
-    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_URL, [
-      {
-        title: 'New User Signup',
-        description: `A new user (\`${userId}\`) has signed up.`,
-        color: 0x40f56a,
-        footer: {
-          text: 'A notification will be sent when this user has created their profile'
-        }
-      },
-    ]);
   }
 
   revalidatePath('/', 'layout');
