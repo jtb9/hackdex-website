@@ -110,7 +110,7 @@ export async function prepareSubmission(formData: FormData) {
     }
   }
 
-  if (process.env.DISCORD_WEBHOOK_ADMIN_URL) {
+  if (process.env.DISCORD_WEBHOOK_ADMIN_HACKS_URL) {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
     const displayName = profile?.username ? `@${profile.username}` : user.id;
 
@@ -123,7 +123,7 @@ export async function prepareSubmission(formData: FormData) {
         text: `This message brought to you by Hackdex`
       }
     }
-    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_URL, [
+    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_HACKS_URL, [
       embed,
     ]);
   }
@@ -260,9 +260,8 @@ export async function confirmPatchUpload(args: { slug: string; objectKey: string
     .eq("slug", args.slug);
   if (uErr) return { ok: false, error: uErr.message } as const;
 
-  if (process.env.DISCORD_WEBHOOK_ADMIN_URL) {
+  if (process.env.DISCORD_WEBHOOK_ADMIN_HACKS_URL) {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', hack.created_by).single();
-
     const displayName = profile?.username ? `@${profile.username}` : hack.created_by;
     const uploadedByDifferentUser = hack.created_by !== user.id;
 
@@ -284,7 +283,11 @@ export async function confirmPatchUpload(args: { slug: string; objectKey: string
       }
     }
 
-    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_URL, [
+    const webhookUrl = args.firstUpload ?
+      process.env.DISCORD_WEBHOOK_ADMIN_HACKS_URL :
+      process.env.DISCORD_WEBHOOK_HACKDEX_HACKS_URL || process.env.DISCORD_WEBHOOK_ADMIN_HACKS_URL;
+
+    await sendDiscordMessageEmbed(webhookUrl, [
       embed,
     ]);
   }

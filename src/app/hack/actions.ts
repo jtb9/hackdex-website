@@ -319,7 +319,7 @@ export async function approveHack(slug: string) {
 
   if (updateErr) return { ok: false, error: updateErr.message } as const;
 
-  if (process.env.DISCORD_WEBHOOK_ADMIN_URL) {
+  if (process.env.DISCORD_WEBHOOK_HACKDEX_HACKS_URL) {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', hack.created_by).single();
     const displayName = profile?.username ? `@${profile.username}` : user.id;
     const embed: APIEmbed = {
@@ -331,7 +331,7 @@ export async function approveHack(slug: string) {
         text: `This message brought to you by Hackdex`
       }
     }
-    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_ADMIN_URL, [
+    await sendDiscordMessageEmbed(process.env.DISCORD_WEBHOOK_HACKDEX_HACKS_URL, [
       embed,
     ]);
   }
