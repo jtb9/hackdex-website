@@ -24,17 +24,21 @@ type ContextValue = {
   getFileBlob: (id: string) => Promise<File | null>;
   importToCache: (id: string) => Promise<void>;
   removeFromCache: (id: string) => Promise<void>;
-  importUploadedBlob: (file: File) => Promise<string | null>; // returns matched id
+  importUploadedBlob: (file: File, knownRomId?: string) => Promise<string | null>;
 };
 
 const BaseRomContext = React.createContext<ContextValue | null>(null);
 
 export function BaseRomProvider({ children }: { children: React.ReactNode }) {
-  const supported = typeof window !== "undefined" && "showOpenFilePicker" in window;
+  const [supported, setSupported] = React.useState(false);
   const [linked, setLinked] = React.useState<Record<string, any>>({});
   const [statuses, setStatuses] = React.useState<Record<string, "granted" | "prompt" | "denied" | "error">>({});
   const [cached, setCached] = React.useState<Record<string, boolean>>({});
   const [totalCachedBytes, setTotalCachedBytes] = React.useState(0);
+
+  React.useEffect(() => {
+    setSupported(typeof window !== "undefined" && "showOpenFilePicker" in window);
+  }, []);
 
   React.useEffect(() => {
     (async () => {
@@ -238,16 +242,28 @@ export function BaseRomProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Accept a user-uploaded base ROM, hash it, and if it matches a known base ROM, cache it under that id
-  async function importUploadedBlob(file: File): Promise<string | null> {
+  async function importUploadedBlob(file: File, knownRomId?: string): Promise<string | null> {
     try {
-      const hash = await sha1Hex(file);
-      const match = baseRoms.find((r) => r.sha1.toLowerCase() === hash.toLowerCase());
-      if (!match) return null;
-      await setRomBlob(match.id, file);
-      setCached((prev) => ({ ...prev, [match.id]: true }));
+      let romId: string;
+      
+      if (knownRomId) {
+        romId = knownRomId;
+      } else {
+        const hash = await sha1Hex(file);
+        const match = baseRoms.find((r) => r.sha1.toLowerCase() === hash.toLowerCase());
+        if (!match) return null;
+        romId = match.id;
+      }
+
+      const rom = baseRoms.find(r => r.id === romId);
+      const fileExtension = file.name.split('.').pop() || '';
+      const renamedFileName = rom ? `${rom.name}.${fileExtension}` : file.name;
+      const renamedFile = new File([file], renamedFileName, { type: file.type });
+      
+      await setRomBlob(romId, renamedFile);
+      setCached((prev) => ({ ...prev, [romId]: true }));
       setTotalCachedBytes((n) => n + file.size);
-      return match.id;
+      return romId;
     } catch {
       return null;
     }
@@ -314,7 +330,7 @@ export function BaseRomProvider({ children }: { children: React.ReactNode }) {
 export function useBaseRoms() {
   const ctx = React.useContext(BaseRomContext);
   if (!ctx) throw new Error("useBaseRoms must be used within BaseRomProvider");
-  return ctx;
+  return ctx as ContextValue;
 }
 
 

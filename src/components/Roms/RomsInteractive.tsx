@@ -5,14 +5,19 @@ import { FaTriangleExclamation } from "react-icons/fa6";
 import { baseRoms } from "@/data/baseRoms";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
 import BaseRomCard from "@/components/BaseRomCard";
+import RomSelectionModal from "@/components/Roms/RomSelectionModal";
 import { platformAcceptAll } from "@/utils/idb";
+import { sha1Hex } from "@/utils/hash";
 
 const ALLOWED_TYPES = platformAcceptAll().split(",");
 
-export default function RomsInteractive() {
+export default function RomsInteractive({ hideLinkedAndCached }: { hideLinkedAndCached?: boolean } = {}) {
   const { supported, linked, statuses, cached, totalCachedBytes, importUploadedBlob, importToCache, removeFromCache, unlinkRom, ensurePermission, countReady } = useBaseRoms();
   const [uploadMsg, setUploadMsg] = React.useState<string | null>(null);
   const [dragActive, setDragActive] = React.useState(false);
+  const [unrecognizedFile, setUnrecognizedFile] = React.useState<File | null>(null);
+  const [isSelectingRom, setIsSelectingRom] = React.useState(false);
+  const [isCachingSelected, setIsCachingSelected] = React.useState(false);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -20,12 +25,46 @@ export default function RomsInteractive() {
     const id = await importUploadedBlob(file);
     const name = baseRoms.find(r => r.id === id)?.name;
     if (name) setUploadMsg(`Recognized and cached: ${name}`);
-    else setUploadMsg("Unrecognized ROM. Not cached.");
+    else {
+      setUnrecognizedFile(file);
+      setIsSelectingRom(true);
+    }
     e.target.value = "";
   }
 
   const linkedOrCached = baseRoms.filter(({ id }) => Boolean(cached[id]) || Boolean(linked[id]));
   const notLinked = baseRoms.filter(({ id }) => !cached[id] && !linked[id]);
+  
+  const visibleLinkedOrCached = hideLinkedAndCached ? [] : linkedOrCached;
+  const visibleNotLinked = hideLinkedAndCached ? baseRoms : notLinked;
+
+  async function handleRomSelect(romId: string) {
+    if (!unrecognizedFile) return;
+    setIsCachingSelected(true);
+    try {
+      const selectedRom = baseRoms.find(r => r.id === romId);
+      if (!selectedRom) {
+        setUploadMsg("ROM not found.");
+        return;
+      }
+
+      const fileHash = await sha1Hex(unrecognizedFile);
+      if (fileHash.toLowerCase() !== selectedRom.sha1.toLowerCase()) {
+        setUploadMsg(`Hash mismatch. This doesn't appear to be ${selectedRom.name}. Please select the correct ROM.`);
+        return;
+      }
+
+      const id = await importUploadedBlob(unrecognizedFile, romId);
+      const name = baseRoms.find(r => r.id === id)?.name;
+      setUploadMsg(`Recognized and cached: ${name}`);
+      setIsSelectingRom(false);
+      setUnrecognizedFile(null);
+    } catch (error) {
+      setUploadMsg("Failed to cache ROM.");
+    } finally {
+      setIsCachingSelected(false);
+    }
+  }
 
   return (
     <>
@@ -70,7 +109,10 @@ export default function RomsInteractive() {
             const id = await importUploadedBlob(file);
             const name = baseRoms.find(r => r.id === id)?.name;
             if (name) setUploadMsg(`Recognized and cached: ${name}`);
-            else setUploadMsg("Unrecognized ROM. Not cached.");
+            else {
+              setUnrecognizedFile(file);
+              setIsSelectingRom(true);
+            }
           }}
         >
           <div className="flex flex-col items-center justify-center gap-3 text-center sm:flex-row sm:justify-between sm:text-left">
@@ -96,11 +138,11 @@ export default function RomsInteractive() {
         <div>Cached size: {(totalCachedBytes / (1024 * 1024)).toFixed(1)} MB</div>
       </div>
 
-      {linkedOrCached.length > 0 && (
+      {visibleLinkedOrCached.length > 0 && (
         <div className="mt-6">
           <div className="mb-3 text-xs font-medium uppercase tracking-wide text-foreground/70">Linked or cached</div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {linkedOrCached.map(({ id, platform, region }) => {
+            {visibleLinkedOrCached.map(({ id, platform, region }) => {
               const name = baseRoms.find(r => r.id === id)?.name;
               const isLinked = Boolean(linked[id]);
               const status = statuses[id] ?? (isLinked ? "prompt" : "denied");
@@ -126,9 +168,9 @@ export default function RomsInteractive() {
       )}
 
       <div className="mt-8">
-        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-foreground/70">Not linked</div>
+        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-foreground/70">{hideLinkedAndCached ? "Available ROMs" : "Not linked"}</div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {notLinked.map(({ id, name, platform, region }) => (
+          {visibleNotLinked.map(({ id, name, platform, region }) => (
             <BaseRomCard
               key={id}
               name={name}
@@ -141,6 +183,20 @@ export default function RomsInteractive() {
           ))}
         </div>
       </div>
+
+      <RomSelectionModal
+        isOpen={isSelectingRom}
+        file={unrecognizedFile}
+        onSelect={handleRomSelect}
+        onCancel={() => {
+          setIsSelectingRom(false);
+          setUnrecognizedFile(null);
+          setUploadMsg(null);
+        }}
+        isLoading={isCachingSelected}
+        linked={linked}
+        cached={cached}
+      />
     </>
   );
 }

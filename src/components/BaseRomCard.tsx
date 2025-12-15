@@ -13,6 +13,10 @@ export default function BaseRomCard({
   onUnlink,
   onEnsurePermission,
   onImportCache,
+  isSelectable,
+  isSelected,
+  onSelect,
+  isLikely,
 }: {
   name: string;
   platform: "GB" | "GBC" | "GBA" | "NDS";
@@ -24,8 +28,18 @@ export default function BaseRomCard({
   onUnlink?: () => void;
   onEnsurePermission?: () => void;
   onImportCache?: () => void;
+  isSelectable?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
+  isLikely?: boolean;
 }) {
-  const ringAndBg = isCached
+  const ringAndBg = isSelectable
+    ? isSelected
+      ? "ring-[var(--accent)] bg-[var(--accent)]/15"
+      : isLikely
+      ? "ring-amber-400/40 bg-amber-500/10"
+      : "card ring-[var(--border)]"
+    : isCached
     ? "ring-emerald-400/40 bg-emerald-500/10"
     : isLinked
     ? status === "granted"
@@ -35,7 +49,11 @@ export default function BaseRomCard({
       : "ring-rose-400/40 bg-rose-500/10"
     : "card ring-[var(--border)]";
 
-  const statusText = isCached
+  const statusText = isSelectable
+    ? isLikely
+      ? "Likely match"
+      : "Select to identify"
+    : isCached
     ? "Cached copy available"
     : isLinked
     ? status === "granted"
@@ -47,7 +65,13 @@ export default function BaseRomCard({
       : "Link error"
     : "Not linked";
 
-  const dotColor = isCached
+  const dotColor = isSelectable
+    ? isSelected
+      ? "bg-[var(--accent)]"
+      : isLikely
+      ? "bg-amber-400"
+      : "bg-white/30"
+    : isCached
     ? "bg-emerald-400"
     : isLinked
     ? status === "granted"
@@ -58,7 +82,12 @@ export default function BaseRomCard({
     : "bg-white/30";
 
   return (
-    <div className={`rounded-[12px] text-foreground p-4 ring-1 flex flex-col ${ringAndBg}`}>
+    <div
+      onClick={isSelectable ? onSelect : undefined}
+      className={`rounded-[12px] text-foreground p-4 ring-1 flex flex-col ${ringAndBg} ${
+        isSelectable ? "cursor-pointer transition-all hover:ring-2" : ""
+      }`}
+    >
       <div className="flex flex-1 items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-[10px]">
@@ -71,7 +100,7 @@ export default function BaseRomCard({
         <span className={`h-2 w-2 rounded-full ${dotColor}`} title={isLinked ? status : "Not linked"} />
       </div>
 
-      {(isCached || isLinked) && (
+      {!isSelectable && (isCached || isLinked) && (
         <div className="mt-4 flex min-h-[44px] items-center gap-2">
           {isCached ? (
             <button
