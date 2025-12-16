@@ -11,8 +11,7 @@ import { MdTune } from "react-icons/md";
 import { BsSdCardFill } from "react-icons/bs";
 import { CATEGORY_ICONS } from "@/components/Icons/tagCategories";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
-import { sortOrderedTags, OrderedTag } from "@/utils/format";
-import { getCoverSignedUrls } from "@/app/hack/actions";
+import { sortOrderedTags, OrderedTag, getCoverUrls } from "@/utils/format";
 import { HackCardAttributes } from "@/components/HackCard";
 
 const HACKS_PER_PAGE = 9;
@@ -82,7 +81,7 @@ export default function DiscoverBrowser() {
       const coversBySlug = new Map<string, string[]>();
       if (coverRows && coverRows.length > 0) {
         const coverKeys = coverRows.map(c => c.url);
-        const urls = await getCoverSignedUrls(coverKeys);
+        const urls = getCoverUrls(coverKeys);
         // Map: storage object url -> signedUrl
         const urlToSignedUrl = new Map<string, string>();
         coverKeys.forEach((key, idx) => {
