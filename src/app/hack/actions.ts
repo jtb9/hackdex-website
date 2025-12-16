@@ -265,21 +265,6 @@ export async function presignCoverUpload(args: { slug: string; objectKey: string
   return { ok: true, presignedUrl: url } as const;
 }
 
-export async function getCoverSignedUrl(objectKey: string) {
-  const client = getMinioClient();
-  // 5 minutes expiry for viewing
-  const url = await client.presignedGetObject(COVERS_BUCKET, objectKey, 60 * 5);
-  return url;
-}
-
-export async function getCoverSignedUrls(objectKeys: string[]) {
-  const client = getMinioClient();
-  // 5 minutes expiry for viewing
-  const urls = await Promise.all(
-    objectKeys.map(key => client.presignedGetObject(COVERS_BUCKET, key, 60 * 5))
-  );
-  return urls;
-}
 
 export async function approveHack(slug: string) {
   const supabase = await createClient();

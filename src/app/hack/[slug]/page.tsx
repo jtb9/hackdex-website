@@ -18,9 +18,8 @@ import serialize from "serialize-javascript";
 import { headers } from "next/headers";
 import { MenuItem } from "@headlessui/react";
 import { FaCircleCheck } from "react-icons/fa6";
-import { sortOrderedTags } from "@/utils/format";
+import { sortOrderedTags, getCoverUrls } from "@/utils/format";
 import { RiArchiveStackFill } from "react-icons/ri";
-import { getCoverSignedUrls } from "@/app/hack/actions";
 import { isInformationalArchiveHack, isDownloadableArchiveHack, isArchiveHack, checkEditPermission } from "@/utils/hack";
 import Avatar from "@/components/Account/Avatar";
 
@@ -132,7 +131,7 @@ export default async function HackDetail({ params }: HackDetailProps) {
     .eq("hack_slug", slug)
     .order("position", { ascending: true });
   if (covers && covers.length > 0) {
-    images = await getCoverSignedUrls(covers.map(c => c.url));
+    images = getCoverUrls(covers.map(c => c.url));
   }
 
   const { data: tagRows } = await supabase
