@@ -15,6 +15,7 @@ export default function SignupForm() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
+  const [acceptedTerms, setAcceptedTerms] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
@@ -24,7 +25,7 @@ export default function SignupForm() {
 
   const [state, formAction, isPending] = useActionState<AuthActionState, FormData>(signup, { error: null });
   const passwordsMatch = password === confirm;
-  const isValid = !emailError && !passwordError && passwordsMatch;
+  const isValid = !emailError && !passwordError && passwordsMatch && acceptedTerms;
 
   // Reset Turnstile token and widget on error to allow retry
   useEffect(() => {
@@ -156,7 +157,30 @@ export default function SignupForm() {
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-3">
+      <div className="flex items-center gap-2 text-xs text-foreground/80">
+        <input
+          id="accept-terms"
+          name="acceptTerms"
+          type="checkbox"
+          checked={acceptedTerms}
+          onChange={(e) => setAcceptedTerms(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-[var(--border)] bg-[var(--surface-2)] text-[var(--ring)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+          required
+        />
+        <label htmlFor="accept-terms" className="space-x-1">
+          <span>I agree to the</span>
+          <a
+            href="/terms"
+            className="font-medium text-sky-500 hover:text-sky-400 underline underline-offset-2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Terms of Service
+          </a>
+        </label>
+      </div>
+
+      <div className="flex flex-col items-center gap-3 mt-2">
         <Turnstile
           key={turnstileKey}
           siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
