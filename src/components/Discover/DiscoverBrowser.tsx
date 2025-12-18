@@ -67,6 +67,8 @@ export default function DiscoverBrowser() {
           .order("current_patch", { ascending: false, nullsFirst: false });
       } else if (sort === "updated") {
         query = query.order("updated_at", { ascending: false });
+      } else if (sort === "alphabetical") {
+        query = query.order("title", { ascending: true });
       } else {
         query = query.order("approved_at", { ascending: false });
       }
@@ -305,6 +307,7 @@ export default function DiscoverBrowser() {
           <option value="popular">Most popular</option>
           <option value="new">Newest</option>
           <option value="updated">Recently updated</option>
+          <option value="alphabetical">Alphabetical</option>
         </select>
       </div>
 
