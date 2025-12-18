@@ -1,7 +1,7 @@
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FiExternalLink } from "react-icons/fi";
+import { FiAlertTriangle, FiExternalLink } from "react-icons/fi";
 import DashboardClient from "@/components/Dashboard/DashboardClient";
 import ArchiverManagement from "@/components/Dashboard/ArchiverManagement";
 import { getDownloadsSeriesAll } from "./actions";
@@ -85,7 +85,6 @@ export default async function DashboardPage() {
             </div>
             <div className="divide-y divide-amber-600/20">
               {pendingHacks.map((h) => {
-                console.log(h.created_at);
                 const createdDate = h.created_at
                   ? new Date(h.created_at).toLocaleTimeString(undefined, {
                       year: "numeric",
@@ -96,20 +95,32 @@ export default async function DashboardPage() {
                     })
                   : "Unknown";
                 const creator = h.creator_username ? `@${h.creator_username}` : "Unknown";
+                const hasMissingPatch = h.current_patch === null;
+                const bgClasses = hasMissingPatch
+                  ? "bg-amber-50/5 dark:bg-amber-900/5 hover:bg-amber-400/10 dark:hover:bg-amber-600/10"
+                  : "bg-amber-500/5 hover:bg-amber-500/10";
 
                 return (
                   <Link
                     key={h.slug}
                     href={`/hack/${h.slug}`}
                     target="_blank"
-                    className="group block px-4 py-3 text-sm bg-amber-500/5 hover:bg-amber-500/10 transition-colors"
+                    className={`group block px-4 py-3 text-sm ${bgClasses} transition-colors`}
                   >
                     {/* Desktop row */}
                     <div className="hidden lg:grid grid-cols-12 items-center">
                       <div className="col-span-5 min-w-0">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col items-start min-w-0">
-                            <div className="truncate font-medium text-amber-900/90 dark:text-amber-200/90 group-hover:underline">{h.title}</div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="truncate font-medium text-amber-900/90 dark:text-amber-200/90 group-hover:underline">{h.title}</div>
+                              {hasMissingPatch && (
+                                <div className="inline-flex items-center gap-1 rounded-full bg-amber-600/20 dark:bg-amber-600/40 px-2 py-0.5 text-xs font-medium text-amber-900/90 dark:text-amber-200/90">
+                                  <FiAlertTriangle className="h-3 w-3 text-amber-900/90 dark:text-amber-200/90" />
+                                  <span>Missing Patch</span>
+                                </div>
+                              )}
+                            </div>
                             <div className="mt-0.5 text-xs text-amber-900/60 dark:text-amber-200/60 group-hover:underline">/{h.slug}</div>
                           </div>
                         </div>
@@ -126,7 +137,15 @@ export default async function DashboardPage() {
                     <div className="lg:hidden flex flex-col gap-2">
                       <div className="flex items-center gap-3">
                         <div className="flex flex-col items-start min-w-0 flex-1">
-                          <div className="font-medium break-words">{h.title}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="font-medium wrap-break-word">{h.title}</div>
+                            {hasMissingPatch && (
+                              <div className="inline-flex items-center gap-1 rounded-full bg-amber-600/20 dark:bg-amber-600/40 px-2 py-0.5 text-xs font-medium text-amber-900/90 dark:text-amber-200/90">
+                                <FiAlertTriangle className="h-3 w-3 text-amber-900/90 dark:text-amber-200/90" />
+                                <span>Missing Patch</span>
+                              </div>
+                            )}
+                          </div>
                           <div className="mt-0.5 text-xs text-foreground/60 break-all">/{h.slug}</div>
                           <div className="flex flex-wrap items-center gap-3 text-xs text-amber-900/90 dark:text-amber-200/90 mt-2">
                             <span>{creator}</span>
