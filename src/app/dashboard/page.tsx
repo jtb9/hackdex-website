@@ -75,7 +75,12 @@ export default async function DashboardPage() {
 
       {pendingHacks.length > 0 && (
         <div className="mt-12">
-          <h2 className="text-xl font-semibold mb-4">Pending hacks</h2>
+          <div className="mb-4 flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Pending hacks</h2>
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2.5 py-0.5 text-sm font-medium text-amber-900/90 dark:bg-amber-500/20 dark:text-amber-100 border border-amber-600/30">
+              {pendingHacks.length}
+            </span>
+          </div>
           <div className="overflow-hidden rounded-lg border border-amber-600/30 bg-amber-500/5">
             {/* Header row (desktop only) */}
             <div className="hidden lg:grid grid-cols-12 bg-amber-500/5 px-4 py-2 text-xs text-amber-900/80 dark:text-amber-200/80">
