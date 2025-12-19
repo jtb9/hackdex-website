@@ -27,8 +27,8 @@ export default async function DiscoverPage(props: DiscoverPageProps) {
       <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Discover ROM hacks</h1>
-          <p className="mt-2 text-[15px] text-foreground/80">
-            Browse curated patches. See what others are downloading.
+          <p className="mt-2 text-[15px] text-foreground/80 max-w-198">
+            Hackdex supports developers by only hosting hacks that have been uploaded by the person or team that created them. By using this site, you are supporting the original creators and their labors of love.
           </p>
         </div>
       </div>
