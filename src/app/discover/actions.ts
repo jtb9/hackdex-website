@@ -52,7 +52,7 @@ export async function getDiscoverData(sort: DiscoverSortOption): Promise<Discove
           .order("downloads", { ascending: false })
           .order("current_patch", { ascending: false, nullsFirst: false });
       } else if (sort === "updated") {
-        query = query.order("updated_at", { ascending: false });
+        // Will sort by current patch published_at in JS after fetching patches
       } else if (sort === "alphabetical") {
         query = query.order("title", { ascending: true });
       } else {
@@ -119,16 +119,18 @@ export async function getDiscoverData(sort: DiscoverSortOption): Promise<Discove
       );
 
       const versionsByPatchId = new Map<number, string>();
+      const publishedAtByPatchId = new Map<number, string | null>();
        if (patchIds.length > 0) {
          const { data: patchRows, error: patchesError } = await supabase
            .from("patches")
-           .select("id,version")
+           .select("id,version,published_at")
            .in("id", patchIds);
         if (patchesError) throw patchesError;
 
         (patchRows || []).forEach((p: any) => {
           if (typeof p.id === "number") {
             versionsByPatchId.set(p.id, p.version || "Pre-release");
+            publishedAtByPatchId.set(p.id, p.published_at ?? null);
           }
         });
       }
@@ -186,14 +188,19 @@ export async function getDiscoverData(sort: DiscoverSortOption): Promise<Discove
         });
       }
 
-      // Map versions
+      // Map versions and current patch published_at per hack
       const mappedVersions = new Map<string, string>();
+      const publishedAtBySlug = new Map<string, string | null>();
       (rows || []).forEach((r: any) => {
         if (typeof r.current_patch === "number") {
           const version = versionsByPatchId.get(r.current_patch) || "Pre-release";
           mappedVersions.set(r.slug, version);
+
+          const publishedAt = publishedAtByPatchId.get(r.current_patch) ?? null;
+          publishedAtBySlug.set(r.slug, publishedAt);
         } else {
           mappedVersions.set(r.slug, r.original_author ? "Archive" : "Pre-release");
+          publishedAtBySlug.set(r.slug, null);
         }
       });
 
@@ -226,6 +233,30 @@ export async function getDiscoverData(sort: DiscoverSortOption): Promise<Discove
         description: r.description,
         isArchive: r.original_author != null && r.current_patch === null,
       }));
+
+      // Sort by current patch published_at for "updated" sort
+      if (sort === "updated") {
+        mapped = [...mapped].sort((a, b) => {
+          const aPub = publishedAtBySlug.get(a.slug);
+          const bPub = publishedAtBySlug.get(b.slug);
+
+          // Nulls (no published_at) go last
+          if (!aPub && !bPub) return 0;
+          if (!aPub) return 1;
+          if (!bPub) return -1;
+
+          const aTime = new Date(aPub).getTime();
+          const bTime = new Date(bPub).getTime();
+
+          // Secondary sort: when times are equal, push archives to end
+          if (aTime === bTime) {
+            if (a.isArchive && !b.isArchive) return 1;
+            if (!a.isArchive && b.isArchive) return -1;
+          }
+
+          return bTime - aTime; // Descending order (newest first)
+        });
+      }
 
       // Sort by trending score if needed
       if (sort === "trending" && trendingScores) {
