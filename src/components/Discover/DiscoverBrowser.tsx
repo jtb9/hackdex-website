@@ -2,7 +2,6 @@
 
 import React, { Fragment } from "react";
 import HackCard from "@/components/HackCard";
-import { createClient } from "@/utils/supabase/client";
 import { baseRoms } from "@/data/baseRoms";
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Transition } from "@headlessui/react";
 import { useFloating, offset, flip, shift, size, autoUpdate } from "@floating-ui/react";
@@ -11,18 +10,18 @@ import { MdTune } from "react-icons/md";
 import { BsSdCardFill } from "react-icons/bs";
 import { CATEGORY_ICONS } from "@/components/Icons/tagCategories";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
-import { sortOrderedTags, OrderedTag, getCoverUrls } from "@/utils/format";
 import { HackCardAttributes } from "@/components/HackCard";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { getDiscoverData } from "@/app/discover/actions";
+import type { DiscoverSortOption } from "@/types/discover";
 
 const HACKS_PER_PAGE = 9;
 
 interface DiscoverBrowserProps {
-  initialSort?: string;
+  initialSort?: DiscoverSortOption;
 }
 
-export default function DiscoverBrowser({ initialSort = "popular" }: DiscoverBrowserProps) {
-  const supabase = createClient();
+export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBrowserProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -30,7 +29,7 @@ export default function DiscoverBrowser({ initialSort = "popular" }: DiscoverBro
   const [query, setQuery] = React.useState("");
   const [selectedTags, setSelectedTags] = React.useState<string[]>([]);
   const [selectedBaseRoms, setSelectedBaseRoms] = React.useState<string[]>([]);
-  const [sort, setSort] = React.useState(initialSort);
+  const [sort, setSort] = React.useState<DiscoverSortOption>(initialSort ?? "trending");
   const [hacks, setHacks] = React.useState<HackCardAttributes[]>([]);
   const [tagGroups, setTagGroups] = React.useState<Record<string, string[]>>({});
   const [ungroupedTags, setUngroupedTags] = React.useState<string[]>([]);
@@ -63,146 +62,20 @@ export default function DiscoverBrowser({ initialSort = "popular" }: DiscoverBro
     const run = async () => {
       setLoadingHacks(true);
       setLoadingTags(true);
-      let query = supabase
-        .from("hacks")
-        .select("slug,title,summary,description,base_rom,downloads,created_by,updated_at,current_patch,original_author,approved_at");
-
-      if (sort === "popular") {
-        // When sorting by popularity, always show non-archive hacks first.
-        // Archives are defined as rows where original_author IS NOT NULL and current_patch IS NULL,
-        // so ordering by current_patch with NULLS LAST effectively pushes archives to the end.
-        query = query
-          .order("downloads", { ascending: false })
-          .order("current_patch", { ascending: false, nullsFirst: false });
-      } else if (sort === "updated") {
-        query = query.order("updated_at", { ascending: false });
-      } else if (sort === "alphabetical") {
-        query = query.order("title", { ascending: true });
-      } else {
-        query = query.order("approved_at", { ascending: false });
+      try {
+        const result = await getDiscoverData(sort);
+        setHacks(result.hacks);
+        setTagGroups(result.tagGroups);
+        setUngroupedTags(result.ungroupedTags);
+      } catch (error) {
+        console.error("Failed to fetch hacks:", error);
+        setHacks([]);
+        setTagGroups({});
+        setUngroupedTags([]);
+      } finally {
+        setLoadingHacks(false);
+        setLoadingTags(false);
       }
-
-      const { data: rows } = await query;
-      const slugs = (rows || []).map((r) => r.slug);
-      const { data: coverRows } = await supabase
-        .from("hack_covers")
-        .select("hack_slug,url,position")
-        .in("hack_slug", slugs)
-        .order("position", { ascending: true });
-      const coversBySlug = new Map<string, string[]>();
-      if (coverRows && coverRows.length > 0) {
-        const coverKeys = coverRows.map(c => c.url);
-        const urls = getCoverUrls(coverKeys);
-        // Map: storage object url -> signedUrl
-        const urlToSignedUrl = new Map<string, string>();
-        coverKeys.forEach((key, idx) => {
-          if (urls[idx]) urlToSignedUrl.set(key, urls[idx]);
-        });
-
-        coverRows.forEach((c) => {
-          const arr = coversBySlug.get(c.hack_slug) || [];
-          const signed = urlToSignedUrl.get(c.url);
-          if (signed) {
-            arr.push(signed);
-            coversBySlug.set(c.hack_slug, arr);
-          }
-        });
-      }
-      const { data: tagRows } = await supabase
-        .from("hack_tags")
-        .select("hack_slug,order,tags(name,category)")
-        .in("hack_slug", slugs);
-      const tagsBySlug = new Map<string, OrderedTag[]>();
-      (tagRows || []).forEach((r) => {
-        const arr = tagsBySlug.get(r.hack_slug) || [];
-        arr.push({
-          name: r.tags.name,
-          order: r.order,
-        });
-        tagsBySlug.set(r.hack_slug, arr);
-      });
-
-      const patchIds = Array.from(
-        new Set(
-          (rows || [])
-            .map((r: any) => r.current_patch as number | null)
-            .filter((id): id is number => typeof id === "number")
-        )
-      );
-
-      const versionsByPatchId = new Map<number, string>();
-      if (patchIds.length > 0) {
-        const { data: patchRows } = await supabase
-          .from("patches")
-          .select("id,version")
-          .in("id", patchIds);
-        (patchRows || []).forEach((p: any) => {
-          if (typeof p.id === "number") {
-            versionsByPatchId.set(p.id, p.version || "Pre-release");
-          }
-        });
-      }
-
-      const mappedVersions = new Map<string, string>();
-      (rows || []).forEach((r: any) => {
-        if (typeof r.current_patch === "number") {
-          const version = versionsByPatchId.get(r.current_patch) || "Pre-release";
-          mappedVersions.set(r.slug, version);
-        } else {
-          mappedVersions.set(r.slug, r.original_author ? "Archive" : "Pre-release");
-        }
-      });
-      // Fetch all tags with category to build UI groups
-      const { data: allTagRows } = await supabase
-        .from("tags")
-        .select("name,category");
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id,username");
-      const usernameById = new Map<string, string>();
-      (profiles || []).forEach((p) => usernameById.set(p.id, p.username ? `@${p.username}` : "Unknown"));
-
-      const mapped = (rows || []).map((r) => ({
-        slug: r.slug,
-        title: r.title,
-        author: r.original_author ? r.original_author : usernameById.get(r.created_by as string) || "Unknown",
-        covers: coversBySlug.get(r.slug) || [],
-        tags: sortOrderedTags(tagsBySlug.get(r.slug) || []),
-        downloads: r.downloads,
-        baseRomId: r.base_rom,
-        version: mappedVersions.get(r.slug) || "Pre-release",
-        summary: r.summary,
-        description: r.description,
-        isArchive: r.original_author != null && r.current_patch === null,
-      }));
-
-      setHacks(mapped);
-      setLoadingHacks(false);
-      if (allTagRows) {
-        const groups: Record<string, string[]> = {};
-        const ungrouped: string[] = [];
-        const unique = new Set<string>();
-        // Build groups from authoritative tags table, so we include tags not present in current results too
-        for (const row of allTagRows as any[]) {
-          const name: string = row.name;
-          if (unique.has(name)) continue;
-          unique.add(name);
-          const category: string | null = row.category ?? null;
-          if (category) {
-            if (!groups[category]) groups[category] = [];
-            groups[category].push(name);
-          } else {
-            ungrouped.push(name);
-          }
-        }
-        // Sort for stable UI
-        Object.keys(groups).forEach((k) => groups[k].sort((a, b) => a.localeCompare(b)));
-        ungrouped.sort((a, b) => a.localeCompare(b));
-        setTagGroups(groups);
-        setUngroupedTags(ungrouped);
-      }
-      // Ensure loadingTags is cleared even if no rows were returned
-      setLoadingTags(false);
     };
     run();
   }, [sort]);
@@ -311,7 +184,7 @@ export default function DiscoverBrowser({ initialSort = "popular" }: DiscoverBro
         <select
           value={sort}
           onChange={(e) => {
-            const nextSort = e.target.value;
+            const nextSort = e.target.value as DiscoverSortOption;
             setSort(nextSort);
             // Keep URL query param in sync so refresh/back preserves sort
             const current = searchParams ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
@@ -322,6 +195,7 @@ export default function DiscoverBrowser({ initialSort = "popular" }: DiscoverBro
           }}
           className="h-11 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
         >
+          <option value="trending">Trending</option>
           <option value="popular">Most popular</option>
           <option value="new">Newest</option>
           <option value="updated">Recently updated</option>

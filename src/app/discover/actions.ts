@@ -1,0 +1,280 @@
+ "use server";
+
+import { unstable_cache as cache } from "next/cache";
+import { createServiceClient } from "@/utils/supabase/server";
+import { sortOrderedTags, OrderedTag, getCoverUrls } from "@/utils/format";
+import { HackCardAttributes } from "@/components/HackCard";
+import type { DiscoverSortOption } from "@/types/discover";
+
+const TRENDING_WINDOW_DAYS = 3;
+const TIME_TO_LIVE = 600; // 10 minutes
+
+ export interface DiscoverDataResult {
+   hacks: HackCardAttributes[];
+   tagGroups: Record<string, string[]>;
+   ungroupedTags: string[];
+ }
+
+ function getDayStamp() {
+   const now = new Date();
+   const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+   return startOfTodayUtc.toISOString().slice(0, 10); // YYYY-MM-DD
+ }
+
+export async function getDiscoverData(sort: DiscoverSortOption): Promise<DiscoverDataResult> {
+   const dayStamp = getDayStamp();
+
+    const runner = cache(
+      async () => {
+        // Must use service role client because cookies cannot be used when caching
+        // Viewing permissions are enforced manually (only approved hacks are shown)
+        // TODO: Add `published` as a requirement when it's implemented
+        const supabase = await createServiceClient();
+
+        // Build base query for hacks (public/anon view: only approved hacks)
+        let query = supabase
+          .from("hacks")
+          .select("slug,title,summary,description,base_rom,downloads,created_by,updated_at,current_patch,original_author,approved_at")
+          .eq("approved", true);
+
+      // Apply sorting based on sort type
+      if (sort === "popular") {
+        // When sorting by popularity, always show non-archive hacks first.
+        // Archives are defined as rows where original_author IS NOT NULL and current_patch IS NULL,
+        // so ordering by current_patch with NULLS LAST effectively pushes archives to the end.
+        query = query
+          .order("downloads", { ascending: false })
+          .order("current_patch", { ascending: false, nullsFirst: false });
+      } else if (sort === "trending") {
+        // For trending, we'll fetch all and calculate scores in JS
+        // Still order by downloads first for efficiency
+        query = query
+          .order("downloads", { ascending: false })
+          .order("current_patch", { ascending: false, nullsFirst: false });
+      } else if (sort === "updated") {
+        query = query.order("updated_at", { ascending: false });
+      } else if (sort === "alphabetical") {
+        query = query.order("title", { ascending: true });
+      } else {
+        // "new" or default
+        query = query.order("approved_at", { ascending: false });
+      }
+
+       const { data: rows, error: hacksError } = await query;
+       if (hacksError) throw hacksError;
+
+       const slugs = (rows || []).map((r) => r.slug);
+
+       // Fetch covers
+       const { data: coverRows, error: coversError } = await supabase
+         .from("hack_covers")
+         .select("hack_slug,url,position")
+         .in("hack_slug", slugs)
+         .order("position", { ascending: true });
+      if (coversError) throw coversError;
+
+      const coversBySlug = new Map<string, string[]>();
+      if (coverRows && coverRows.length > 0) {
+        const coverKeys = coverRows.map((c) => c.url);
+        const urls = getCoverUrls(coverKeys);
+        const urlToSignedUrl = new Map<string, string>();
+        coverKeys.forEach((key, idx) => {
+          if (urls[idx]) urlToSignedUrl.set(key, urls[idx]);
+        });
+
+        coverRows.forEach((c) => {
+          const arr = coversBySlug.get(c.hack_slug) || [];
+          const signed = urlToSignedUrl.get(c.url);
+          if (signed) {
+            arr.push(signed);
+            coversBySlug.set(c.hack_slug, arr);
+          }
+        });
+      }
+
+       // Fetch tags
+       const { data: tagRows, error: tagsError } = await supabase
+         .from("hack_tags")
+         .select("hack_slug,order,tags(name,category)")
+         .in("hack_slug", slugs);
+      if (tagsError) throw tagsError;
+
+      const tagsBySlug = new Map<string, OrderedTag[]>();
+      (tagRows || []).forEach((r: any) => {
+        const arr = tagsBySlug.get(r.hack_slug) || [];
+        arr.push({
+          name: r.tags.name,
+          order: r.order,
+        });
+        tagsBySlug.set(r.hack_slug, arr);
+      });
+
+      // Fetch patches for version mapping
+      const patchIds = Array.from(
+        new Set(
+          (rows || [])
+            .map((r: any) => r.current_patch as number | null)
+            .filter((id): id is number => typeof id === "number")
+        )
+      );
+
+      const versionsByPatchId = new Map<number, string>();
+       if (patchIds.length > 0) {
+         const { data: patchRows, error: patchesError } = await supabase
+           .from("patches")
+           .select("id,version")
+           .in("id", patchIds);
+        if (patchesError) throw patchesError;
+
+        (patchRows || []).forEach((p: any) => {
+          if (typeof p.id === "number") {
+            versionsByPatchId.set(p.id, p.version || "Pre-release");
+          }
+        });
+      }
+
+      // Calculate trending scores if needed
+      let trendingScores: Map<string, number> | null = null;
+      if (sort === "trending") {
+        // Get all patches for all hacks
+        const { data: allPatches, error: allPatchesError } = await supabase
+          .from("patches")
+          .select("id,parent_hack")
+          .in("parent_hack", slugs);
+        if (allPatchesError) throw allPatchesError;
+
+        const patchIdToSlug = new Map<number, string>();
+        const allPatchIds: number[] = [];
+        (allPatches || []).forEach((p: any) => {
+          if (typeof p.id === "number" && p.parent_hack) {
+            patchIdToSlug.set(p.id, p.parent_hack);
+            allPatchIds.push(p.id);
+          }
+        });
+
+        // Calculate recent downloads over the trending window
+        const since = new Date();
+        since.setDate(since.getDate() - TRENDING_WINDOW_DAYS);
+        const sinceISO = since.toISOString();
+
+        const recentDownloadsBySlug = new Map<string, number>();
+        if (allPatchIds.length > 0) {
+          const { data: recentDownloads, error: downloadsError } = await supabase
+            .from("patch_downloads")
+            .select("patch,created_at")
+            .in("patch", allPatchIds)
+            .gte("created_at", sinceISO);
+          if (downloadsError) throw downloadsError;
+
+          (recentDownloads || []).forEach((dl: any) => {
+            const pid = dl.patch as number | null;
+            if (!pid) return;
+            const slug = patchIdToSlug.get(pid);
+            if (!slug) return;
+            recentDownloadsBySlug.set(slug, (recentDownloadsBySlug.get(slug) || 0) + 1);
+          });
+        }
+
+        // Calculate trending scores: recent_downloads_window + (8 * log(downloads + 1))
+        // Give small boost to longer lived popular hacks
+        trendingScores = new Map<string, number>();
+        (rows || []).forEach((r: any) => {
+          const recentDownloads = recentDownloadsBySlug.get(r.slug) || 0;
+          const lifetimeDownloads = r.downloads || 0;
+          const score = recentDownloads + (8 * Math.log(lifetimeDownloads + 1));
+          trendingScores!.set(r.slug, score);
+        });
+      }
+
+      // Map versions
+      const mappedVersions = new Map<string, string>();
+      (rows || []).forEach((r: any) => {
+        if (typeof r.current_patch === "number") {
+          const version = versionsByPatchId.get(r.current_patch) || "Pre-release";
+          mappedVersions.set(r.slug, version);
+        } else {
+          mappedVersions.set(r.slug, r.original_author ? "Archive" : "Pre-release");
+        }
+      });
+
+      // Fetch all tags with category to build UI groups
+      const { data: allTagRows, error: allTagsError } = await supabase
+        .from("tags")
+        .select("name,category");
+      if (allTagsError) throw allTagsError;
+
+      // Fetch profiles for author names
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,username");
+      if (profilesError) throw profilesError;
+
+      const usernameById = new Map<string, string>();
+      (profiles || []).forEach((p) => usernameById.set(p.id, p.username ? `@${p.username}` : "Unknown"));
+
+      // Transform rows to HackCardAttributes
+      let mapped = (rows || []).map((r) => ({
+        slug: r.slug,
+        title: r.title,
+        author: r.original_author ? r.original_author : usernameById.get(r.created_by as string) || "Unknown",
+        covers: coversBySlug.get(r.slug) || [],
+        tags: sortOrderedTags(tagsBySlug.get(r.slug) || []),
+        downloads: r.downloads,
+        baseRomId: r.base_rom,
+        version: mappedVersions.get(r.slug) || "Pre-release",
+        summary: r.summary,
+        description: r.description,
+        isArchive: r.original_author != null && r.current_patch === null,
+      }));
+
+      // Sort by trending score if needed
+      if (sort === "trending" && trendingScores) {
+        mapped = [...mapped].sort((a, b) => {
+          const scoreA = trendingScores!.get(a.slug) || 0;
+          const scoreB = trendingScores!.get(b.slug) || 0;
+
+          // Secondary sort: push archives to end
+          if (scoreA === scoreB) {
+            if (a.isArchive && !b.isArchive) return 1;
+            if (!a.isArchive && b.isArchive) return -1;
+          }
+
+          return scoreB - scoreA; // Descending order
+        });
+      }
+
+      // Build tag groups
+      const groups: Record<string, string[]> = {};
+      const ungrouped: string[] = [];
+      const unique = new Set<string>();
+      if (allTagRows) {
+        for (const row of allTagRows as any[]) {
+          const name: string = row.name;
+          if (unique.has(name)) continue;
+          unique.add(name);
+          const category: string | null = row.category ?? null;
+          if (category) {
+            if (!groups[category]) groups[category] = [];
+            groups[category].push(name);
+          } else {
+            ungrouped.push(name);
+          }
+        }
+        // Sort for stable UI
+        Object.keys(groups).forEach((k) => groups[k].sort((a, b) => a.localeCompare(b)));
+        ungrouped.sort((a, b) => a.localeCompare(b));
+      }
+
+      return {
+        hacks: mapped,
+        tagGroups: groups,
+        ungroupedTags: ungrouped,
+      } satisfies DiscoverDataResult;
+     },
+     [`discover-data:${sort}:${dayStamp}`], // Cache key
+     { revalidate: TIME_TO_LIVE } // Cache duration
+   );
+
+   return runner();
+ }
+
