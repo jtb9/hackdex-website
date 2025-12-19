@@ -6,7 +6,14 @@ import { baseRoms } from "@/data/baseRoms";
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Transition } from "@headlessui/react";
 import { useFloating, offset, flip, shift, size, autoUpdate } from "@floating-ui/react";
 import { IconType } from "react-icons";
-import { MdTune } from "react-icons/md";
+import {
+  MdTune,
+  MdWhatshot,
+  MdTrendingUp,
+  MdNewReleases,
+  MdUpdate,
+  MdSortByAlpha,
+} from "react-icons/md";
 import { BsSdCardFill } from "react-icons/bs";
 import { CATEGORY_ICONS } from "@/components/Icons/tagCategories";
 import { useBaseRoms } from "@/contexts/BaseRomContext";
@@ -14,6 +21,14 @@ import { HackCardAttributes } from "@/components/HackCard";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getDiscoverData } from "@/app/discover/actions";
 import type { DiscoverSortOption } from "@/types/discover";
+
+const SORT_ICON_MAP: Record<DiscoverSortOption, IconType> = {
+  trending: MdWhatshot,
+  popular: MdTrendingUp,
+  new: MdNewReleases,
+  updated: MdUpdate,
+  alphabetical: MdSortByAlpha,
+};
 
 const HACKS_PER_PAGE = 9;
 
@@ -170,6 +185,11 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
     setSelectedBaseRoms([]);
   }
 
+  const sortIcon = React.useMemo(() => {
+    const SortIcon = SORT_ICON_MAP[sort];
+    return SortIcon ? <SortIcon className="h-5 w-5 text-foreground/80" aria-hidden="true" /> : null;
+  }, [sort]);
+
   return (
     <div className="max-w-[1200px] mx-auto">
       <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
@@ -181,26 +201,31 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
             className="h-11 w-full rounded-md bg-[var(--surface-2)] px-3 text-sm text-foreground placeholder:text-foreground/60 ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />
         </div>
-        <select
-          value={sort}
-          onChange={(e) => {
-            const nextSort = e.target.value as DiscoverSortOption;
-            setSort(nextSort);
-            // Keep URL query param in sync so refresh/back preserves sort
-            const current = searchParams ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
-            current.set("sort", nextSort);
-            const queryString = current.toString();
-            const url = queryString ? `${pathname}?${queryString}` : pathname;
-            router.replace(url);
-          }}
-          className="h-11 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+        <div
+          className="inline-flex h-11 items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus-within:ring-2 focus-within:ring-[var(--ring)]"
         >
-          <option value="trending">Trending</option>
-          <option value="popular">Most popular</option>
-          <option value="new">Newest</option>
-          <option value="updated">Recently updated</option>
-          <option value="alphabetical">Alphabetical</option>
-        </select>
+          {sortIcon}
+          <select
+            value={sort}
+            onChange={(e) => {
+              const nextSort = e.target.value as DiscoverSortOption;
+              setSort(nextSort);
+              // Keep URL query param in sync so refresh/back preserves sort
+              const current = searchParams ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
+              current.set("sort", nextSort);
+              const queryString = current.toString();
+              const url = queryString ? `${pathname}?${queryString}` : pathname;
+              router.replace(url);
+            }}
+            className="h-full bg-transparent pl-1 pr-0 text-sm text-foreground focus:outline-none focus:ring-0"
+          >
+            <option value="trending">Trending</option>
+            <option value="popular">Most popular</option>
+            <option value="new">Newest</option>
+            <option value="updated">Recently updated</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+        </div>
       </div>
 
       {/* Unified filter section: Base ROM dropdown first, category dropdowns next, ungrouped tags last */}
