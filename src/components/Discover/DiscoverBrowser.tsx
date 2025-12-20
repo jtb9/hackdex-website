@@ -257,7 +257,7 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
               const url = queryString ? `${pathname}?${queryString}` : pathname;
               router.replace(url);
             }}
-            className="h-full bg-transparent pl-1 pr-0 text-sm text-foreground focus:outline-none focus:ring-0"
+            className="w-full h-full bg-transparent pl-1 pr-0 text-sm text-foreground focus:outline-none focus:ring-0"
           >
             <option value="trending">Trending</option>
             <option value="popular">Most popular</option>
