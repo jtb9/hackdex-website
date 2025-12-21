@@ -24,6 +24,7 @@ import { HackCardAttributes } from "@/components/HackCard";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getDiscoverData } from "@/app/discover/actions";
 import type { DiscoverSortOption } from "@/types/discover";
+import Select, { SelectOption } from "@/components/Primitives/Select";
 
 const SORT_ICON_MAP: Record<DiscoverSortOption, IconType> = {
   trending: MdWhatshot,
@@ -32,6 +33,14 @@ const SORT_ICON_MAP: Record<DiscoverSortOption, IconType> = {
   updated: MdUpdate,
   alphabetical: MdSortByAlpha,
 };
+
+const SORT_OPTIONS: SelectOption[] = [
+  { value: "trending", label: "Trending", icon: MdWhatshot },
+  { value: "popular", label: "Most popular", icon: MdTrendingUp },
+  { value: "new", label: "Newest", icon: MdNewReleases },
+  { value: "updated", label: "Recently updated", icon: MdUpdate },
+  { value: "alphabetical", label: "Alphabetical", icon: MdSortByAlpha },
+];
 
 const HACKS_PER_PAGE = 9;
 
@@ -241,30 +250,27 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
             className="h-11 w-full rounded-md bg-[var(--surface-2)] px-3 text-sm text-foreground placeholder:text-foreground/60 ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />
         </div>
-        <div
-          className="inline-flex h-11 items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] focus-within:ring-2 focus-within:ring-[var(--ring)]"
-        >
+        <div className="inline-flex h-11 items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)]">
           {sortIcon}
-          <select
-            value={sort}
-            onChange={(e) => {
-              const nextSort = e.target.value as DiscoverSortOption;
-              setSort(nextSort);
-              // Keep URL query param in sync so refresh/back preserves sort
-              const current = searchParams ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
-              current.set("sort", nextSort);
-              const queryString = current.toString();
-              const url = queryString ? `${pathname}?${queryString}` : pathname;
-              router.replace(url);
-            }}
-            className="w-full h-full bg-transparent pl-1 pr-0 text-sm text-foreground focus:outline-none focus:ring-0"
-          >
-            <option value="trending">Trending</option>
-            <option value="popular">Most popular</option>
-            <option value="new">Newest</option>
-            <option value="updated">Recently updated</option>
-            <option value="alphabetical">Alphabetical</option>
-          </select>
+          <div className="relative">
+            <Select
+              value={sort}
+              onChange={(value) => {
+                const nextSort = value as DiscoverSortOption;
+                setSort(nextSort);
+                const current = searchParams ? new URLSearchParams(searchParams.toString()) : new URLSearchParams();
+                current.set("sort", nextSort);
+                const queryString = current.toString();
+                const url = queryString ? `${pathname}?${queryString}` : pathname;
+                router.replace(url);
+              }}
+              options={SORT_OPTIONS}
+              // this css gets a little janky, but it gets the job done
+              className="flex h-11 w-fit items-center rounded-none bg-transparent px-0 pl-1 pr-8 !ring-0 focus:ring-0"
+              dropdownClassName="top-[44px] right-[-12px]"
+              dropdownAlign="right"
+            />
+          </div>
         </div>
       </div>
 
