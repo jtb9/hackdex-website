@@ -250,9 +250,9 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
             className="h-11 w-full rounded-md bg-[var(--surface-2)] px-3 text-sm text-foreground placeholder:text-foreground/60 ring-1 ring-inset ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />
         </div>
-        <div className="inline-flex h-11 items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)]">
+        <div className="flex h-11 w-full items-center gap-1.5 rounded-md bg-[var(--surface-2)] px-3 text-sm ring-1 ring-inset ring-[var(--border)] sm:inline-flex sm:w-auto">
           {sortIcon}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <Select
               value={sort}
               onChange={(value) => {
@@ -266,9 +266,8 @@ export default function DiscoverBrowser({ initialSort = "trending" }: DiscoverBr
               }}
               options={SORT_OPTIONS}
               // this css gets a little janky, but it gets the job done
-              className="flex h-11 w-fit items-center rounded-none bg-transparent px-0 pl-1 pr-8 !ring-0 focus:ring-0"
-              dropdownClassName="top-[44px] right-[-12px]"
-              dropdownAlign="right"
+              className="flex h-11 w-full items-center rounded-none bg-transparent px-0 pl-1 pr-8 text-left sm:w-fit !ring-0 focus:ring-0"
+              dropdownClassName="-left-[2.313rem] top-[44px] !min-w-0 !max-w-none !w-[calc(100%_+_3.125rem)] sm:left-auto sm:right-[-12px] sm:!w-max"
             />
           </div>
         </div>
